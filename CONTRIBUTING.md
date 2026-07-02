@@ -5,7 +5,7 @@ Thank you for your interest in contributing! This project welcomes contributions
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/yourusername/maidenhead-contest-maps.git`
+2. Clone your fork: `git clone https://github.com/yourusername/grid-mapper.git`
 3. Create a virtual environment: `python3 -m venv venv && source venv/bin/activate`
 4. Install dependencies: `pip install -r requirements.txt`
 5. Create a feature branch: `git checkout -b feature/your-feature-name`

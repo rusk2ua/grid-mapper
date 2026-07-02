@@ -15,7 +15,7 @@ setup(
     description="Generate color-coded maps of Maidenhead grid squares from contest logs",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/maidenhead-contest-maps",
+    url="https://github.com/rusk2ua/grid-mapper",
     py_modules=["maidenhead_map"],
     classifiers=[
         "Development Status :: 4 - Beta",

@@ -27,7 +27,7 @@ The tool generates high-resolution PNG maps showing:
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/rushealy-aws/grid-mapper.git
+git clone https://github.com/rusk2ua/grid-mapper.git
 cd grid-mapper
 ```
 
