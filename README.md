@@ -15,6 +15,7 @@ A Python tool that creates color-coded maps of Maidenhead grid squares from amat
 - **Local Path Maps**: `--paths` draws a small-area map connecting your home grid to every worked station with a line, labeled with callsign and distance in kilometers (matching ARRL 10 GHz and Up Contest scoring) — great for showing local operators and newcomers what's achievable on VHF/UHF/microwave
 - **Multi-Location Detection**: Rover and multi-op logs that report a different home grid on different QSOs (e.g. a rover moving between stops) are automatically split into a separate graphic per band *and* per operating location, instead of mixing locations together on one map
 - **Whole-Number Contact Scale**: The contact-density color scale only ever shows whole numbers, since there's no such thing as a fractional contact
+- **OpenStreetMap Basemap**: `--osm-basemap` adds a faint (default 30% opacity, adjustable with `--osm-opacity`) OpenStreetMap street-level tile layer underneath every map generated for 902 MHz and higher bands (33cm and up), on top of which all the usual layers still draw normally
 
 ## Sample Output
 
@@ -109,6 +110,41 @@ To force everything onto a single map regardless of how many locations the log
 actually reports, pass `--home-grid` explicitly; this overrides auto-detection
 and disables the per-location split.
 
+### OpenStreetMap Basemap (`--osm-basemap`)
+
+For bands at 902 MHz and up (33cm and shorter wavelengths), where contest
+activity tends to be very local, `--osm-basemap` adds a faint OpenStreetMap
+street-level tile layer underneath the map — useful for orienting a path or
+density map against actual roads, towns, and terrain rather than just
+coastlines and borders:
+
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths --osm-basemap
+```
+
+The overlay defaults to 30% opacity so it stays out of the way of the grid
+squares, contact paths, and labels drawn on top of it. Adjust it with
+`--osm-opacity`:
+
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths --osm-basemap --osm-opacity 0.5
+```
+
+A few things worth knowing:
+- **Band gating is automatic.** `--osm-basemap` only affects maps for bands
+  902 MHz and up. Passing it alongside a log that also has, say, 6m or 2m
+  contacts doesn't add anything to those bands' maps — only 33cm and up.
+- **Requires internet access at run time** to fetch map tiles from
+  OpenStreetMap's tile servers. If tiles can't be fetched (no connection,
+  tile server unreachable, etc.), the map still generates normally — you
+  just get the map without the basemap layer, plus a warning on the
+  console.
+- **Attribution is automatic.** Any map that includes the OSM layer gets a
+  small "© OpenStreetMap contributors" credit in the bottom-right corner,
+  as required by OpenStreetMap's tile usage policy.
+- Works together with `--paths` and with multi-location/rover logs — every
+  graphic generated for an eligible band gets the same underlay.
+
 ### Available Continents
 - `north_america` - North America
 - `south_america` - South America  
@@ -147,6 +183,8 @@ The script automatically detects common CSV column names:
 | `--continents` | One or more continents to include (auto-detected if omitted) |
 | `--paths` | Also generate a local-area path map per band/location (see [Local Path Maps](#local-path-maps---paths)) |
 | `--home-grid GRID` | Your 4- or 6-character home grid square; overrides auto-detection and forces a single location (disables the per-location split described in [Multi-Location (Rover) Logs](#multi-location-rover-logs)) |
+| `--osm-basemap` | Add a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands (see [OpenStreetMap Basemap](#openstreetmap-basemap---osm-basemap)) |
+| `--osm-opacity 0.0-1.0` | Opacity of the `--osm-basemap` underlay (default `0.3`, i.e. 30%); has no effect without `--osm-basemap` |
 
 ## Output Files
 
@@ -206,7 +244,9 @@ operating location) with descriptive filenames:
 - Python 3.7+
 - matplotlib
 - cartopy
+- Pillow (used by cartopy for the `--osm-basemap` tile layer)
 - numpy (installed with matplotlib)
+- Internet access at run time if using `--osm-basemap` (to fetch OpenStreetMap tiles)
 
 ## Examples
 
@@ -243,10 +283,21 @@ band worked, then generates one contact-density map and one path map for each
 band/location combination — e.g. a rover that operated 5 bands from 15 stops
 gets up to 150 graphics, each focused on just that stop's local contacts.
 
+### Example 6: Path map with an OpenStreetMap basemap
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths --osm-basemap --osm-opacity 0.5
+```
+Generates the same 10G path map as Example 4, but with a 50%-opacity
+OpenStreetMap street-level layer underneath it — useful for showing local
+operators exactly which roads and towns their contacts correspond to. The
+overlay only applies to bands at 902 MHz and up, so a log with lower-band
+contacts would generate those maps without it, unaffected by the flag.
+
 ## Revision History
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.4.0 | 2026-08-20 | Added `--osm-basemap` (with `--osm-opacity`, default 30%) to overlay a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands, with automatic attribution; added `Pillow` to requirements; fixed a matplotlib figure-leak in contact-density map generation that showed up on large multi-location/multi-band runs. |
 | 1.3.0 | 2026-08-20 | Added `--paths` local-area path maps (home grid → each worked station, labeled with callsign + distance in km) for small-area contests like ARRL 10 GHz and Up; added `--home-grid` override; automatic per-band-and-per-location splitting for rover/multi-op logs that report more than one home grid; contact-density color scale now shows whole numbers only; fixed Cabrillo parsing double-counting the operator's own grid as a worked-station contact; fixed bare-GHz frequency values (e.g. `10` for 10 GHz) being mislabeled instead of recognized as `10G`/`24G`/`47G`/`75G`/`123G`. |
 | 1.2.0 | 2025-09-17 | Added full HF/VHF/UHF/microwave band support (630m–1mm), Cabrillo standard nomenclature compliance, direct band-name string parsing. |
 | 1.1.0 | 2025-09-17 | Added CSV format support with automatic column detection, automatic file-format detection, `--continents` selection, automatic continent detection, dynamic map bounds. |

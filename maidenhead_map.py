@@ -7,7 +7,72 @@ import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import cartopy.io.img_tiles as cimgt
 from collections import Counter, defaultdict
+
+# Minimum frequency, in MHz, for each band label this script produces.
+# Used to decide whether a band qualifies for the --osm-basemap underlay
+# (902 MHz and up, i.e. 33cm and shorter wavelengths).
+BAND_MIN_FREQ_MHZ = {
+    '630m': 0.472, '160m': 1.8, '80m': 3.5, '60m': 5.33, '40m': 7.0, '30m': 10.1,
+    '20m': 14.0, '17m': 18.068, '15m': 21.0, '12m': 24.89, '10m': 28.0,
+    '6m': 50.0, '2m': 144.0, '1.25m': 222.0,
+    '70cm': 420.0, '33cm': 902.0, '23cm': 1240.0,
+    '13cm': 2300.0, '9cm': 3300.0, '6cm': 5650.0, '3cm': 10000.0,
+    '1.25cm': 24000.0, '6mm': 47000.0, '4mm': 75500.0, '2.5mm': 119980.0,
+    '2mm': 142000.0, '1mm': 241000.0,
+    '10G': 10000.0, '24G': 24000.0, '47G': 47000.0, '75G': 75000.0, '123G': 123000.0,
+}
+
+OSM_MIN_FREQ_MHZ = 902.0  # 902 MHz and up, per the --osm-basemap band cutoff
+
+def band_is_osm_eligible(band):
+    """Best-effort check for whether a band label represents 902 MHz or
+    higher. Known band names (see BAND_MIN_FREQ_MHZ) are looked up directly;
+    unrecognized labels fall back to parsing a trailing numeric value with an
+    optional GHz/MHz/kHz suffix (e.g. "915MHz", "3.4GHz"). Returns False
+    (conservatively, no basemap) if the band can't be identified either way.
+    """
+    if band in BAND_MIN_FREQ_MHZ:
+        return BAND_MIN_FREQ_MHZ[band] >= OSM_MIN_FREQ_MHZ
+
+    match = re.match(r'^([\d.]+)\s*(GHz|MHz|kHz)?$', band.strip(), re.IGNORECASE)
+    if not match:
+        return False
+
+    value = float(match.group(1))
+    unit = (match.group(2) or 'MHz').lower()
+    if unit == 'ghz':
+        value *= 1000
+    elif unit == 'khz':
+        value /= 1000
+    return value >= OSM_MIN_FREQ_MHZ
+
+def estimate_osm_zoom(lon_min, lon_max, lat_min, lat_max):
+    """Pick a reasonable OpenStreetMap tile zoom level for the given extent.
+    Capped at 11 to keep the number of tiles fetched from the public OSM
+    tile server modest, regardless of how tight the view is."""
+    span = max(lon_max - lon_min, 0.01)
+    zoom_table = [(40, 4), (20, 5), (10, 6), (5, 7), (2.5, 8), (1.2, 9), (0.5, 10)]
+    for threshold, zoom in zoom_table:
+        if span >= threshold:
+            return zoom
+    return 11
+
+def add_osm_underlay(ax, lon_min, lon_max, lat_min, lat_max, opacity=0.3):
+    """Add a faint OpenStreetMap tile basemap beneath the rest of the map's
+    layers, plus the attribution OSM's tile usage policy requires. Fails
+    quietly (map generation continues without the basemap) if the tiles
+    can't be fetched, e.g. no internet connection."""
+    try:
+        tiler = cimgt.OSM(user_agent='grid-mapper (https://github.com/rusk2ua/grid-mapper)')
+        zoom = estimate_osm_zoom(lon_min, lon_max, lat_min, lat_max)
+        ax.add_image(tiler, zoom, alpha=opacity)
+        ax.text(0.995, 0.005, '© OpenStreetMap contributors', transform=ax.transAxes,
+                fontsize=6, ha='right', va='bottom', color='black', zorder=100,
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.7, edgecolor='none'))
+    except Exception as e:
+        print(f"Warning: could not load OpenStreetMap basemap ({e}); continuing without it")
 
 # Continent boundaries (approximate)
 CONTINENT_BOUNDS = {
@@ -528,7 +593,8 @@ def filter_grids_by_continents(grids, continents):
     
     return filtered
 
-def create_path_map(home_grid, contacts, callsign, band, output_file=None):
+def create_path_map(home_grid, contacts, callsign, band, output_file=None,
+                     osm_basemap=False, osm_opacity=0.3):
     """Create a local-area 'path map' for a single band: a marker for the home
     station, a marker for each worked station, and a line connecting them,
     labeled with callsign and distance. Meant for small-area contests (e.g.
@@ -536,6 +602,9 @@ def create_path_map(home_grid, contacts, callsign, band, output_file=None):
     not contact density across a continent.
 
     contacts is a list of (their_callsign, their_grid) tuples for this band.
+    osm_basemap adds a faint OpenStreetMap tile underlay (see
+    band_is_osm_eligible/add_osm_underlay) for bands at 902 MHz and up; it's
+    additive to, and drawn beneath, all of the layers already here.
     """
     home_center = grid_center(home_grid)
     if not home_center:
@@ -564,6 +633,9 @@ def create_path_map(home_grid, contacts, callsign, band, output_file=None):
     fig = plt.figure(figsize=(14, 10))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+    if osm_basemap and band_is_osm_eligible(band):
+        add_osm_underlay(ax, lon_min, lon_max, lat_min, lat_max, opacity=osm_opacity)
 
     ax.add_feature(cfeature.COASTLINE, linewidth=0.7)
     ax.add_feature(cfeature.BORDERS, linewidth=0.5)
@@ -638,13 +710,17 @@ def create_path_map(home_grid, contacts, callsign, band, output_file=None):
     print(f"{band}: {len(unique_contacts)} contacts plotted from home grid {home_grid}, "
           f"longest path {max_dist:.1f} km")
 
-def create_grid_map(grids, callsign, band, continents=None, output_file=None, location=None):
+def create_grid_map(grids, callsign, band, continents=None, output_file=None, location=None,
+                     osm_basemap=False, osm_opacity=0.3):
     """Create color-coded map of Maidenhead grid squares for a specific band.
 
     `location` is an optional home-grid label (e.g. for a rover log with
     multiple operating locations); when given, it's included in the title
     and, unless output_file is set explicitly, in the filename so each
     location gets its own graphic.
+    osm_basemap adds a faint OpenStreetMap tile underlay (see
+    band_is_osm_eligible/add_osm_underlay) for bands at 902 MHz and up; it's
+    additive to, and drawn beneath, all of the layers already here.
     """
 
     grid_counts = Counter(grids)
@@ -673,7 +749,10 @@ def create_grid_map(grids, callsign, band, continents=None, output_file=None, lo
     fig = plt.figure(figsize=(14, 10))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
-    
+
+    if osm_basemap and band_is_osm_eligible(band):
+        add_osm_underlay(ax, lon_min, lon_max, lat_min, lat_max, opacity=osm_opacity)
+
     ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
     ax.add_feature(cfeature.BORDERS, linewidth=0.3)
     ax.add_feature(cfeature.LAND, alpha=0.2, color='lightgray')
@@ -784,6 +863,7 @@ def create_grid_map(grids, callsign, band, continents=None, output_file=None, lo
             output_file = f"{callsign}_{band}_{region_name}_maidenhead_map.png"
 
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close(fig)
     print(f"Map saved as {output_file}")
     print(f"{band}: {len(valid_grids)} unique grid squares, {sum(valid_grids.values())} contacts")
 
@@ -806,6 +886,13 @@ def main():
                        help='Your own 4- or 6-character Maidenhead grid square. Overrides auto-detection '
                             'and forces every contact to be treated as worked from this one location '
                             '(disables automatic per-location splitting for multi-location/rover logs).')
+    parser.add_argument('--osm-basemap', action='store_true',
+                       help='Add a faint OpenStreetMap tile basemap underneath every map generated for '
+                            '902 MHz and higher bands (33cm and up). All existing layers are kept as-is; '
+                            'this just adds OSM imagery beneath them. Requires internet access at run '
+                            'time and fails quietly (map still generates) if the tiles can\'t be fetched.')
+    parser.add_argument('--osm-opacity', type=float, default=0.3, metavar='0.0-1.0',
+                       help='Opacity of the --osm-basemap underlay (default: 0.3, i.e. 30%%).')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -813,6 +900,10 @@ def main():
 
     args = parser.parse_args()
     filename = args.filename
+
+    if not 0.0 <= args.osm_opacity <= 1.0:
+        print(f"--osm-opacity must be between 0.0 and 1.0 (got {args.osm_opacity}); using default 0.3")
+        args.osm_opacity = 0.3
 
     # Determine file format based on extension
     if filename.lower().endswith('.csv'):
@@ -856,7 +947,8 @@ def main():
             # No per-contact location data available for this band (e.g. a CSV
             # without a recognized grid column), or the user forced a single
             # location with --home-grid: one map for the whole band, as before.
-            create_grid_map(grids, callsign, band, args.continents)
+            create_grid_map(grids, callsign, band, args.continents,
+                             osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
                 home_grid = override_home_grid or detected_home_grid
                 if home_grid and detected_home_grid and not override_home_grid:
@@ -865,7 +957,8 @@ def main():
                     print(f"Skipping --paths map for {band}: no home grid available. "
                           "Pass --home-grid GRIDSQUARE or use a log that reports your own grid per QSO.")
                 elif contacts:
-                    create_path_map(home_grid, [(c, g) for c, g, _ in contacts], callsign, band)
+                    create_path_map(home_grid, [(c, g) for c, g, _ in contacts], callsign, band,
+                                     osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
                 else:
                     print(f"Skipping --paths map for {band}: no worked-station contacts were parsed")
             continue
@@ -880,14 +973,16 @@ def main():
         if len(location_groups) <= 1:
             # Only one location in play for this band - keep the simple,
             # un-suffixed output rather than adding a needless location tag.
-            create_grid_map(grids, callsign, band, args.continents)
+            create_grid_map(grids, callsign, band, args.continents,
+                             osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
                 home_grid = next(iter(location_groups), None)
                 if not home_grid:
                     print(f"Skipping --paths map for {band}: no home grid available. "
                           "Pass --home-grid GRIDSQUARE or use a log that reports your own grid per QSO.")
                 else:
-                    create_path_map(home_grid, location_groups[home_grid], callsign, band)
+                    create_path_map(home_grid, location_groups[home_grid], callsign, band,
+                                     osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             continue
 
         # Multiple operating locations for this band: one graphic per location.
@@ -899,9 +994,11 @@ def main():
                 print(f"Skipping {band} group with no identifiable home grid ({len(loc_contacts)} contacts)")
                 continue
             loc_grids = [g for _, g in loc_contacts]
-            create_grid_map(loc_grids, callsign, band, args.continents, location=loc)
+            create_grid_map(loc_grids, callsign, band, args.continents, location=loc,
+                             osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
-                create_path_map(loc, loc_contacts, callsign, band)
+                create_path_map(loc, loc_contacts, callsign, band,
+                                 osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
 
 if __name__ == "__main__":
     main()

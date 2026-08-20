@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-20
+
+### Added
+- `--osm-basemap` CLI option: adds a faint OpenStreetMap tile layer underneath
+  every map generated for bands at 902 MHz and up (33cm and shorter
+  wavelengths — the point at which contest activity tends to be extremely
+  local and street-level map context becomes genuinely useful for orienting
+  a path or density map). Applies to both the contact-density map and, when
+  `--paths` is used, the path map. All existing layers (coastline, borders,
+  land/ocean, grid squares, contact paths, labels, etc.) are kept exactly as
+  before, drawn on top of the OSM layer.
+- `--osm-opacity 0.0-1.0` CLI option to control the OSM underlay's
+  transparency (default `0.3`, i.e. 30%, per the original request). Only
+  takes effect together with `--osm-basemap`.
+- `band_is_osm_eligible()` helper: determines whether a band qualifies for
+  the OSM underlay, using the same band-name table as the rest of the script
+  plus a fallback regex parse for unrecognized frequency-style labels (e.g.
+  `"915MHz"`, `"3.4GHz"`).
+- `© OpenStreetMap contributors` attribution is automatically added to the
+  bottom-right corner of any map that includes the OSM underlay, per
+  OpenStreetMap's tile usage policy.
+- Required `Pillow` explicitly in `requirements.txt` (previously pulled in
+  transitively via cartopy/matplotlib); `cartopy.io.img_tiles`, used for the
+  OSM tile layer, depends on it directly.
+
+### Fixed
+- Contact-density map generation (`create_grid_map()`) never closed its
+  matplotlib figure after saving. This didn't affect single-map runs, but a
+  log that generates many maps in one run — e.g. a rover log split across
+  several bands and operating locations — would accumulate open figures for
+  the whole run, growing memory usage the longer the run went and eventually
+  triggering matplotlib's "more than 20 figures" warning. Path map
+  generation already closed its figure correctly; both now do.
+
+### Notes
+- `--osm-basemap` requires internet access at run time to fetch map tiles
+  from OpenStreetMap's tile servers. If a tile can't be fetched (e.g. no
+  connection), the map still generates normally, just without the
+  underlay, and a warning is printed.
+
 ## [1.3.0] - 2026-08-20
 
 ### Added
