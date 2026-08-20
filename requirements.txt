@@ -1,3 +1,4 @@
 matplotlib
 cartopy
 Pillow
+scipy

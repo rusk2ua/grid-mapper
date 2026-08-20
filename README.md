@@ -245,6 +245,7 @@ operating location) with descriptive filenames:
 - matplotlib
 - cartopy
 - Pillow (used by cartopy for the `--osm-basemap` tile layer)
+- scipy (used by cartopy to reproject the `--osm-basemap` tile layer)
 - numpy (installed with matplotlib)
 - Internet access at run time if using `--osm-basemap` (to fetch OpenStreetMap tiles)
 
@@ -297,6 +298,7 @@ contacts would generate those maps without it, unaffected by the flag.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.4.1 | 2026-08-20 | Fixed `--osm-basemap` crashing with `ImportError: ... requires either pykdtree or scipy` on installs without one of those already present; added `scipy` to requirements. |
 | 1.4.0 | 2026-08-20 | Added `--osm-basemap` (with `--osm-opacity`, default 30%) to overlay a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands, with automatic attribution; added `Pillow` to requirements; fixed a matplotlib figure-leak in contact-density map generation that showed up on large multi-location/multi-band runs. |
 | 1.3.0 | 2026-08-20 | Added `--paths` local-area path maps (home grid → each worked station, labeled with callsign + distance in km) for small-area contests like ARRL 10 GHz and Up; added `--home-grid` override; automatic per-band-and-per-location splitting for rover/multi-op logs that report more than one home grid; contact-density color scale now shows whole numbers only; fixed Cabrillo parsing double-counting the operator's own grid as a worked-station contact; fixed bare-GHz frequency values (e.g. `10` for 10 GHz) being mislabeled instead of recognized as `10G`/`24G`/`47G`/`75G`/`123G`. |
 | 1.2.0 | 2025-09-17 | Added full HF/VHF/UHF/microwave band support (630m–1mm), Cabrillo standard nomenclature compliance, direct band-name string parsing. |

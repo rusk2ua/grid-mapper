@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-08-20
+
+### Fixed
+- `--osm-basemap` crashed with `ImportError: Using image transforms requires
+  either pykdtree or scipy` on installs that didn't already have `scipy` or
+  `pykdtree` present. Cartopy's tile-reprojection code (used to warp OSM
+  tiles onto the map's projection) needs one of the two; added `scipy` to
+  `requirements.txt` so a fresh `pip install -r requirements.txt` covers it.
+  Existing installs: run `pip install scipy` (or `pip install -r
+  requirements.txt` again) inside your virtual environment.
+
 ## [1.4.0] - 2026-08-20
 
 ### Added
