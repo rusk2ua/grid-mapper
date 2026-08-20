@@ -12,6 +12,9 @@ A Python tool that creates color-coded maps of Maidenhead grid squares from amat
 - **Field Labels**: Displays 2-letter grid field designators (EM, EN, EL, etc.) on the map
 - **Contact Density**: Color-coded intensity showing number of contacts per grid square
 - **Global Coverage**: Supports all continents with optimized map bounds
+- **Local Path Maps**: `--paths` draws a small-area map connecting your home grid to every worked station with a line, labeled with callsign and distance in kilometers (matching ARRL 10 GHz and Up Contest scoring) — great for showing local operators and newcomers what's achievable on VHF/UHF/microwave
+- **Multi-Location Detection**: Rover and multi-op logs that report a different home grid on different QSOs (e.g. a rover moving between stops) are automatically split into a separate graphic per band *and* per operating location, instead of mixing locations together on one map
+- **Whole-Number Contact Scale**: The contact-density color scale only ever shows whole numbers, since there's no such thing as a fractional contact
 
 ## Sample Output
 
@@ -56,6 +59,56 @@ python maidenhead_map.py your_log.csv --continents north_america europe
 python maidenhead_map.py your_log.cbr --continents asia oceania
 ```
 
+### Local Path Maps (`--paths`)
+
+For small-geographic-area contests like the ARRL 10 GHz and Up Contest, `--paths`
+generates an additional map per band showing a line from your home grid square to
+each worked station, labeled with callsign and distance in kilometers (the unit
+this contest — and most VHF/UHF/microwave distance-based scoring — uses):
+
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths
+```
+
+Your home grid is auto-detected from the log when possible:
+- **Cabrillo**: read from the exchange field on each `QSO:` line (works automatically
+  for logs that report your own grid, which is typical for the 10 GHz and Up Contest).
+- **CSV**: read from a "my grid" style column (`my_grid`, `mygrid`, `home_grid`,
+  `station_grid`, or `source_grid`), if present.
+
+If your log doesn't include your own grid, or you want to override what was
+detected, pass it explicitly:
+
+```bash
+python maidenhead_map.py your_log.csv --paths --home-grid EM00uf
+```
+
+Path maps are saved alongside the regular contact-density maps, named
+`{callsign}_{band}_{home_grid}_{region}_grid_paths_map.png`.
+
+### Multi-Location (Rover) Logs
+
+If a log reports a different home grid on different QSOs — typical for a rover
+working the same contest from several stops — the tool detects this automatically
+and generates a **separate graphic per band and per location**, rather than mixing
+several physically distant operating points into one confusing map. This applies
+both to the regular contact-density map and, when `--paths` is used, to the path
+map (each location gets its own home-grid star and its own set of lines).
+
+```bash
+python maidenhead_map.py your_rover_log.cbr --paths
+# 10G: 15 operating locations detected (EN91KT, EN91OV, ...); generating a separate map per location
+```
+
+Location-specific filenames and titles include the home grid for that stop, e.g.
+`K2UA_10G_EN91KT_northeastern_north_america_maidenhead_map.png`. A log with only
+one operating location (the common case) is unaffected — filenames stay exactly
+as they were before.
+
+To force everything onto a single map regardless of how many locations the log
+actually reports, pass `--home-grid` explicitly; this overrides auto-detection
+and disables the per-location split.
+
 ### Available Continents
 - `north_america` - North America
 - `south_america` - South America  
@@ -84,13 +137,26 @@ The script automatically detects common CSV column names:
 - **Frequency**: freq, frequency, band, freq_mhz
 - **Grid**: grid, gridsquare, grid_square, their_grid, dx_grid
 - **Callsign**: call, callsign, station_callsign, my_call
+- **Home grid** (used by `--paths`): my_grid, mygrid, my_gridsquare, home_grid, station_grid, source_grid
+
+## Command-Line Options
+
+| Option | Description |
+| --- | --- |
+| `filename` | Contest log file to parse (`.cbr`/`.log` for Cabrillo, `.csv` for CSV) |
+| `--continents` | One or more continents to include (auto-detected if omitted) |
+| `--paths` | Also generate a local-area path map per band/location (see [Local Path Maps](#local-path-maps---paths)) |
+| `--home-grid GRID` | Your 4- or 6-character home grid square; overrides auto-detection and forces a single location (disables the per-location split described in [Multi-Location (Rover) Logs](#multi-location-rover-logs)) |
 
 ## Output Files
 
-The script creates separate maps for each band with descriptive filenames:
-- `K1TO_6m_north_america_maidenhead_map.png` - 6m band, North America
-- `K1TO_2m_europe_asia_maidenhead_map.png` - 2m band, Europe and Asia
-- `K1TO_70cm_world_maidenhead_map.png` - 70cm band, worldwide
+The script creates separate maps for each band (and, for multi-location logs, each
+operating location) with descriptive filenames:
+- `K1TO_6m_north_america_maidenhead_map.png` - 6m band, North America, single location
+- `K1TO_2m_europe_asia_maidenhead_map.png` - 2m band, Europe and Asia, single location
+- `K1TO_70cm_world_maidenhead_map.png` - 70cm band, worldwide, single location
+- `K5TR_10G_EM00UF_central_north_america_grid_paths_map.png` - 10G band path map (with `--paths`)
+- `K2UA_10G_EN91KT_northeastern_north_america_maidenhead_map.png` - 10G band, one of several rover locations
 
 ## Supported Bands
 
@@ -129,6 +195,12 @@ The script creates separate maps for each band with descriptive filenames:
 - **2mm** (142-149 GHz)
 - **1mm** (241-250 GHz)
 
+> **Note:** Some contest logging software (notably for the ARRL 10 GHz and Up
+> Contest) writes the QSO frequency as a bare whole-GHz number instead of a kHz
+> frequency — e.g. `10` instead of `10368000`. These are recognized directly and
+> mapped to the `10G`, `24G`, `47G`, `75G`, and `123G` band labels used elsewhere
+> in this project (see `samples/`).
+
 ## Requirements
 
 - Python 3.7+
@@ -152,6 +224,35 @@ python maidenhead_map.py my_log.csv --continents north_america south_america
 ```bash
 python maidenhead_map.py eu_contest.csv --continents europe
 ```
+
+### Example 4: Local path map for a 10 GHz and Up contest log
+```bash
+python maidenhead_map.py 10ghz_contest.cbr --paths
+```
+Generates the usual contact-density map plus a `..._grid_paths_map.png` for
+the 10G band, showing a line from your home grid to each station you worked,
+labeled with callsign and distance in km — a quick way to show local operators
+and newcomers what's achievable on 10 GHz.
+
+### Example 5: Rover log with multiple locations and bands
+```bash
+python maidenhead_map.py rover_10ghz_and_up.log --paths --continents north_america
+```
+Automatically detects every distinct home grid used across the log and every
+band worked, then generates one contact-density map and one path map for each
+band/location combination — e.g. a rover that operated 5 bands from 15 stops
+gets up to 150 graphics, each focused on just that stop's local contacts.
+
+## Revision History
+
+| Version | Date | Summary |
+| --- | --- | --- |
+| 1.3.0 | 2026-08-20 | Added `--paths` local-area path maps (home grid → each worked station, labeled with callsign + distance in km) for small-area contests like ARRL 10 GHz and Up; added `--home-grid` override; automatic per-band-and-per-location splitting for rover/multi-op logs that report more than one home grid; contact-density color scale now shows whole numbers only; fixed Cabrillo parsing double-counting the operator's own grid as a worked-station contact; fixed bare-GHz frequency values (e.g. `10` for 10 GHz) being mislabeled instead of recognized as `10G`/`24G`/`47G`/`75G`/`123G`. |
+| 1.2.0 | 2025-09-17 | Added full HF/VHF/UHF/microwave band support (630m–1mm), Cabrillo standard nomenclature compliance, direct band-name string parsing. |
+| 1.1.0 | 2025-09-17 | Added CSV format support with automatic column detection, automatic file-format detection, `--continents` selection, automatic continent detection, dynamic map bounds. |
+| 1.0.0 | 2025-09-17 | Initial release: Cabrillo log parsing, multi-band analysis, accurate grid square boundary rendering, contact density visualization. |
+
+See [CHANGELOG.md](CHANGELOG.md) for full change details.
 
 ## Contributing
 

@@ -40,3 +40,47 @@ These maps show K2UA's contacts during microwave contests, demonstrating multi-b
 - **Multi-row Headers**: Support for complex CSV formats with title rows
 
 These samples demonstrate the tool's ability to handle both simple CSV exports and complex contest log formats while producing clear, informative visualizations for amateur radio contest analysis.
+
+> **Note:** The `K2UA_10G/24G/47G/75G/123G_northeastern_north_america_maidenhead_map.png`
+> files above (and their contact/grid counts) predate the v1.3.0 fixes described
+> below — in particular the fix for Cabrillo parsing double-counting the
+> operator's own grid as a worked-station contact. Their contact counts are
+> likely inflated. See the v1.3.0 samples below for corrected, per-location
+> output from the same underlying logs.
+
+## v1.3.0 Samples: Local Path Maps & Multi-Location Splitting
+
+Generated with the current code (`--paths`, auto-detected continents) from two
+real logs kept out of version control in `logs/` (see `.gitignore`): a
+single-location 10 GHz and Up log (`K5TR-082610GHZ.CBR`) and a multi-location
+rover log spanning five microwave bands (`k2ua.log`).
+
+### K5TR — single operating location, 10G band
+- `K5TR_10G_central_north_america_maidenhead_map.png` — contact-density map, 13 unique grids / 13 contacts
+- `K5TR_10G_EM00UF_central_north_america_grid_paths_map.png` — path map: home grid EM00UF to each of 13 worked stations, labeled with callsign and distance in km (longest 380.0 km)
+
+A single-location log gets plain, un-suffixed filenames — no location tag needed.
+
+### K2UA — rover log, 5 bands × up to 15 operating locations
+This log reports a different home grid on many QSOs (a rover working the
+contest from multiple stops), so the tool automatically generated a separate
+contact-density map *and* path map for every band/location combination it
+detected — 74 files total:
+
+| Band | Locations detected |
+| --- | --- |
+| 10G | 15 (EN91KT, EN91OV, EN91RX, FN02EI, FN02NU, FN02OX, FN02XU, FN03WA, FN12FV, FN23HA, FN23HB, FN32JP, FN32KP, FN32OU, FN33KD) |
+| 24G | 11 (EN91KT, EN91RX, FN02NU, FN02XU, FN03WA, FN12FV, FN23HB, FN32JP, FN32KP, FN32OU, FN33KD) |
+| 47G | 4 (EN91KT, FN02NU, FN23HB, FN32OU) |
+| 75G | 4 (EN91KT, FN02NU, FN23HB, FN32OU) |
+| 123G | 2 (EN91KT, FN23HB) |
+
+Each location's files use its home grid in the filename, e.g.
+`K2UA_10G_EN91KT_northeastern_north_america_maidenhead_map.png` and
+`K2UA_10G_EN91KT_northeastern_north_america_grid_paths_map.png`, so every
+stop's map is self-contained and never collides with another stop's map for
+the same band.
+
+This set also shows two other v1.3.0 changes: the contact-density colorbar
+now shows whole-number ticks only, and path-map distance labels are in
+kilometers (matching ARRL 10 GHz and Up Contest scoring) instead of miles.

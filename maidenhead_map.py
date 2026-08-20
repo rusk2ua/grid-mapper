@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import re
 import csv
+import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
@@ -35,8 +36,50 @@ def maidenhead_to_bounds(grid):
             lon_base += (ord(grid[4]) - ord('A')) * (2/24)
             lat_base += (ord(grid[5]) - ord('A')) * (1/24)
             return lat_base, lat_base + (1/24), lon_base, lon_base + (2/24)
-    
+
     return None
+
+def grid_center(grid):
+    """Return the (lat, lon) center point of a Maidenhead grid square, using
+    whatever precision the grid string provides (4- or 6-character)."""
+    bounds = maidenhead_to_bounds(grid)
+    if not bounds:
+        return None
+    lat_min, lat_max, lon_min, lon_max = bounds
+    return (lat_min + lat_max) / 2, (lon_min + lon_max) / 2
+
+EARTH_RADIUS_KM = 6371.0088
+EARTH_RADIUS_MILES = 3958.7613
+
+def haversine_distance(lat1, lon1, lat2, lon2, radius=EARTH_RADIUS_KM):
+    """Great-circle distance between two lat/lon points, in whatever unit
+    `radius` is expressed in (defaults to kilometers)."""
+    lat1_r, lon1_r, lat2_r, lon2_r = map(math.radians, (lat1, lon1, lat2, lon2))
+    dlat = lat2_r - lat1_r
+    dlon = lon2_r - lon1_r
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
+    c = 2 * math.asin(min(1, math.sqrt(a)))
+    return radius * c
+
+def grid_distance_km(grid1, grid2):
+    """Great-circle distance in kilometers between the centers of two
+    Maidenhead grid squares, or None if either grid is invalid. Kilometers
+    are used because ARRL 10 GHz and Up Contest (and similar) scoring is
+    distance-based in km."""
+    center1 = grid_center(grid1)
+    center2 = grid_center(grid2)
+    if not center1 or not center2:
+        return None
+    return haversine_distance(center1[0], center1[1], center2[0], center2[1], EARTH_RADIUS_KM)
+
+def grid_distance_miles(grid1, grid2):
+    """Great-circle distance in statute miles between the centers of two
+    Maidenhead grid squares, or None if either grid is invalid."""
+    center1 = grid_center(grid1)
+    center2 = grid_center(grid2)
+    if not center1 or not center2:
+        return None
+    return haversine_distance(center1[0], center1[1], center2[0], center2[1], EARTH_RADIUS_MILES)
 
 def get_grid_continent(grid):
     """Determine which continent a grid square belongs to"""
@@ -56,10 +99,22 @@ def get_grid_continent(grid):
     return 'other'
 
 def parse_csv_grids(filename):
-    """Extract Maidenhead grid squares by band from CSV format file"""
+    """Extract Maidenhead grid squares by band from CSV format file.
+
+    Returns (grids_by_band, callsign, home_grid, contacts_by_band). home_grid
+    comes from a "my grid" style column if the CSV has one; otherwise None
+    (the caller can fall back to a --home-grid CLI override).
+    contacts_by_band maps band -> list of (their_callsign, their_grid,
+    qso_home_grid) tuples, used for the --paths map; callsign is "Unknown" if
+    no callsign column could be identified. qso_home_grid is that row's own
+    "my grid" value (or None), letting a log with multiple operating
+    locations be split per location.
+    """
     grids_by_band = defaultdict(list)
+    contacts_by_band = defaultdict(list)
     callsign = "Unknown"
-    
+    home_grid_candidates = Counter()
+
     try:
         with open(filename, 'r') as f:
             # Extract callsign from first line if it contains one
@@ -97,12 +152,14 @@ def parse_csv_grids(filename):
             freq_fields = ['freq', 'frequency', 'band', 'freq_mhz']
             grid_fields = ['grid', 'gridsquare', 'grid_square', 'their_grid', 'dx_grid']
             call_fields = ['call', 'callsign', 'station_callsign', 'my_call']
-            
+            home_grid_fields = ['my_grid', 'mygrid', 'my_gridsquare', 'home_grid', 'station_grid', 'source_grid']
+
             # Find fields by matching lowercase versions
             freq_field = None
             grid_field = None
             call_field = None
-            
+            home_grid_field = None
+
             for orig, lower in zip(original_headers, headers):
                 if not freq_field and lower in freq_fields:
                     freq_field = orig
@@ -110,7 +167,9 @@ def parse_csv_grids(filename):
                     grid_field = orig
                 if not call_field and lower in call_fields:
                     call_field = orig
-            
+                if not home_grid_field and lower in home_grid_fields:
+                    home_grid_field = orig
+
             for row in reader:
                 # Extract frequency/band
                 band = "Unknown"
@@ -120,30 +179,56 @@ def parse_csv_grids(filename):
                         band = freq_to_band(freq_val)
                     else:
                         band = freq_val
-                
+
+                # Extract the logging station's own grid for this row, if the CSV has that column
+                qso_home_grid = None
+                if home_grid_field:
+                    home_grid_val = row[home_grid_field].strip().upper()
+                    if is_valid_grid(home_grid_val):
+                        qso_home_grid = home_grid_val
+                        home_grid_candidates[home_grid_val] += 1
+
                 # Extract grid square
                 if grid_field:
                     grid = row[grid_field].strip().upper()
                     if is_valid_grid(grid):
                         grids_by_band[band].append(grid)
-                
+                        their_call = row[call_field].strip().upper() if call_field else "Unknown"
+                        contacts_by_band[band].append((their_call or "Unknown", grid, qso_home_grid))
+
                 # Also check all fields for grid patterns if no specific grid field
                 if not grid_field:
                     for value in row.values():
                         if value and is_valid_grid(value.strip()):
                             grids_by_band[band].append(value.strip().upper())
-                            
+
     except Exception as e:
         print(f"Error parsing CSV file: {e}")
-        return {}, callsign
-    
-    return dict(grids_by_band), callsign
+        return {}, callsign, None, {}
+
+    home_grid = home_grid_candidates.most_common(1)[0][0] if home_grid_candidates else None
+
+    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band)
 
 def parse_cabrillo_grids(filename):
-    """Extract Maidenhead grid squares by band from Cabrillo format file"""
+    """Extract Maidenhead grid squares by band from Cabrillo format file.
+
+    Returns (grids_by_band, callsign, home_grid, contacts_by_band). home_grid
+    is the logging station's overall (most common) grid square, auto-detected
+    from the QSO exchange fields (Cabrillo QSO lines are: QSO: freq mode date
+    time mycall myexch theircall theirexch). It is excluded from grids_by_band
+    so it isn't double-counted as if it were a worked station.
+    contacts_by_band maps band -> list of (their_callsign, their_grid,
+    qso_home_grid) tuples, used for the --paths map. qso_home_grid is the
+    operator's own grid as reported on that specific QSO line (or None if not
+    present on that line), which lets a rover log with multiple operating
+    locations be split per location.
+    """
     grids_by_band = defaultdict(list)
+    contacts_by_band = defaultdict(list)
     callsign = "Unknown"
-    
+    home_grid_candidates = Counter()
+
     try:
         with open(filename, 'r') as f:
             for line in f:
@@ -155,21 +240,36 @@ def parse_cabrillo_grids(filename):
                     if len(parts) >= 6:
                         freq = parts[1]
                         band = freq_to_band(freq)
-                        
-                        # In Cabrillo QSO format, grid squares are typically in the exchange fields
-                        # Skip the first 6 fields: QSO:, freq, mode, date, time, mycall
-                        # Then look for grids in the remaining exchange fields
-                        exchange_fields = parts[6:]
-                        
-                        for field in exchange_fields:
-                            field = field.upper()
+
+                        # Fields after "QSO: freq mode date time mycall" are the
+                        # exchange: normally [myexch, theircall, theirexch, ...].
+                        exchange_fields = [p.upper() for p in parts[6:]]
+
+                        # If the first exchange field is itself a valid grid, it's
+                        # this station's own (home) grid, not a worked contact.
+                        remaining_fields = exchange_fields
+                        qso_home_grid = None
+                        if exchange_fields and is_valid_grid(exchange_fields[0]):
+                            qso_home_grid = exchange_fields[0]
+                            home_grid_candidates[qso_home_grid] += 1
+                            remaining_fields = exchange_fields[1:]
+
+                        # Pair each worked-station grid with the callsign token
+                        # that immediately precedes it in the exchange.
+                        last_call = None
+                        for field in remaining_fields:
                             if is_valid_grid(field):
                                 grids_by_band[band].append(field)
+                                contacts_by_band[band].append((last_call or "Unknown", field, qso_home_grid))
+                            else:
+                                last_call = field
     except FileNotFoundError:
         print(f"File {filename} not found")
-        return {}, callsign
-    
-    return dict(grids_by_band), callsign
+        return {}, callsign, None, {}
+
+    home_grid = home_grid_candidates.most_common(1)[0][0] if home_grid_candidates else None
+
+    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band)
 
 def is_valid_grid(grid):
     """Check if string is a valid Maidenhead grid square"""
@@ -191,11 +291,26 @@ def is_valid_grid(grid):
                 grid[5] in 'ABCDEFGHIJKLMNOPQRSTUVWX')
     return False
 
+# Some logging software (notably for the ARRL 10 GHz and Up Contest) writes the
+# QSO frequency field as a bare whole-GHz number instead of a kHz frequency
+# (e.g. "10" instead of "10368000"). Recognize those directly so they map to
+# the same band labels already used elsewhere in this project (see samples/).
+GHZ_SHORTHAND_BANDS = {
+    10: '10G',
+    24: '24G',
+    47: '47G',
+    75: '75G',
+    123: '123G',
+}
+
 def freq_to_band(freq_str):
     """Convert frequency string to band name using Cabrillo standard nomenclature"""
     try:
         freq = int(freq_str)
-        
+
+        if freq in GHZ_SHORTHAND_BANDS:
+            return GHZ_SHORTHAND_BANDS[freq]
+
         # LF/MF bands
         if 472 <= freq <= 479:
             return "630m"
@@ -413,9 +528,125 @@ def filter_grids_by_continents(grids, continents):
     
     return filtered
 
-def create_grid_map(grids, callsign, band, continents=None, output_file=None):
-    """Create color-coded map of Maidenhead grid squares for a specific band"""
-    
+def create_path_map(home_grid, contacts, callsign, band, output_file=None):
+    """Create a local-area 'path map' for a single band: a marker for the home
+    station, a marker for each worked station, and a line connecting them,
+    labeled with callsign and distance. Meant for small-area contests (e.g.
+    ARRL 10 GHz and Up) where the point is to show what's achievable locally,
+    not contact density across a continent.
+
+    contacts is a list of (their_callsign, their_grid) tuples for this band.
+    """
+    home_center = grid_center(home_grid)
+    if not home_center:
+        print(f"Cannot plot paths for {band}: invalid home grid '{home_grid}'")
+        return
+
+    # De-duplicate repeated QSOs with the same station from the same grid
+    seen = set()
+    unique_contacts = []
+    for their_call, their_grid in contacts:
+        key = (their_call, their_grid)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_contacts.append((their_call, their_grid))
+
+    if not unique_contacts:
+        print(f"No valid worked-station grids to plot for {band}")
+        return
+
+    home_lat, home_lon = home_center
+    all_grids = [home_grid] + [g for _, g in unique_contacts]
+    lon_min, lon_max, lat_min, lat_max = get_optimal_bounds(all_grids)
+    region_name = get_region_name(lon_min, lon_max, lat_min, lat_max)
+
+    fig = plt.figure(figsize=(14, 10))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
+
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.7)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.5)
+    ax.add_feature(cfeature.LAND, alpha=0.15, color='lightgray')
+    ax.add_feature(cfeature.OCEAN, alpha=0.2, color='lightblue')
+    ax.add_feature(cfeature.LAKES, edgecolor='blue', facecolor='none', linewidth=0.5)
+
+    # Lines from home station to each worked station, drawn first so markers sit on top
+    for their_call, their_grid in unique_contacts:
+        center = grid_center(their_grid)
+        if not center:
+            continue
+        their_lat, their_lon = center
+        ax.plot([home_lon, their_lon], [home_lat, their_lat],
+                 color='crimson', linewidth=1.2, alpha=0.8,
+                 transform=ccrs.Geodetic(), zorder=3)
+
+    # Worked-station markers with callsign + distance labels
+    for their_call, their_grid in unique_contacts:
+        center = grid_center(their_grid)
+        if not center:
+            continue
+        their_lat, their_lon = center
+        distance = grid_distance_km(home_grid, their_grid)
+        label = their_call
+        if distance is not None:
+            label += f"\n{distance:.1f} km"
+
+        ax.plot(their_lon, their_lat, marker='o', markersize=7,
+                 markerfacecolor='crimson', markeredgecolor='black',
+                 markeredgewidth=0.8, transform=ccrs.PlateCarree(), zorder=4)
+        ax.text(their_lon, their_lat, f"  {label}", fontsize=7, fontweight='bold',
+                 ha='left', va='center', color='black',
+                 path_effects=[path_effects.withStroke(linewidth=2, foreground='white')],
+                 transform=ccrs.PlateCarree(), zorder=5)
+
+    # Home station marker: distinct gold star, drawn on top of everything else
+    ax.plot(home_lon, home_lat, marker='*', markersize=22,
+             markerfacecolor='gold', markeredgecolor='black',
+             markeredgewidth=1.2, transform=ccrs.PlateCarree(), zorder=6)
+    ax.text(home_lon, home_lat, f"  {callsign} ({home_grid})", fontsize=9, fontweight='bold',
+             ha='left', va='top', color='black',
+             path_effects=[path_effects.withStroke(linewidth=2.5, foreground='white')],
+             transform=ccrs.PlateCarree(), zorder=7)
+
+    import matplotlib.ticker as mticker
+    gl = ax.gridlines(draw_labels=True, alpha=0.3,
+                       xlocs=range(int(lon_min) - 1, int(lon_max) + 2),
+                       ylocs=range(int(lat_min) - 1, int(lat_max) + 2))
+    gl.xformatter = mticker.FuncFormatter(lambda x, p: f'{abs(int(x))}°W' if x < 0 else f'{int(x)}°E')
+    gl.yformatter = mticker.FuncFormatter(lambda y, p: f'{int(y)}°N' if y >= 0 else f'{abs(int(y))}°S')
+
+    distances = [d for d in (grid_distance_km(home_grid, g) for _, g in unique_contacts) if d is not None]
+    max_dist = max(distances) if distances else 0
+
+    plt.title(
+        f'{callsign} - {band} Band - Contacts from {home_grid}\n'
+        f'{region_name.replace("_", " ").title()} — {len(unique_contacts)} contacts, '
+        f'longest {max_dist:.1f} km',
+        fontsize=13, fontweight='bold')
+
+    plt.tight_layout()
+
+    if not output_file:
+        # Home grid is included so multiple operating locations (e.g. a rover)
+        # never collide on the same filename for a given band/region.
+        output_file = f"{callsign}_{band}_{home_grid}_{region_name}_grid_paths_map.png"
+
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Path map saved as {output_file}")
+    print(f"{band}: {len(unique_contacts)} contacts plotted from home grid {home_grid}, "
+          f"longest path {max_dist:.1f} km")
+
+def create_grid_map(grids, callsign, band, continents=None, output_file=None, location=None):
+    """Create color-coded map of Maidenhead grid squares for a specific band.
+
+    `location` is an optional home-grid label (e.g. for a rover log with
+    multiple operating locations); when given, it's included in the title
+    and, unless output_file is set explicitly, in the filename so each
+    location gets its own graphic.
+    """
+
     grid_counts = Counter(grids)
     
     # Auto-select continents if not specified
@@ -530,21 +761,28 @@ def create_grid_map(grids, callsign, band, continents=None, output_file=None):
     gl.xformatter = mticker.FuncFormatter(lambda x, p: f'{abs(int(x))}°W' if x < 0 else f'{int(x)}°E')
     gl.yformatter = mticker.FuncFormatter(lambda y, p: f'{int(y)}°N' if y >= 0 else f'{abs(int(y))}°S')
     
-    plt.title(f'{callsign} - {band} Band - Maidenhead Grid Squares\n{region_name.replace("_", " ").title()}', 
-              fontsize=14, fontweight='bold')
-    
-    # Add colorbar
-    sm = plt.cm.ScalarMappable(cmap=plt.cm.Reds, 
+    title = f'{callsign} - {band} Band - Maidenhead Grid Squares\n{region_name.replace("_", " ").title()}'
+    if location:
+        title = f'{callsign} - {band} Band - Maidenhead Grid Squares\nFrom {location} — {region_name.replace("_", " ").title()}'
+    plt.title(title, fontsize=14, fontweight='bold')
+
+    # Add colorbar with whole-number ticks only (fractional contacts aren't a thing)
+    sm = plt.cm.ScalarMappable(cmap=plt.cm.Reds,
                                norm=plt.Normalize(vmin=1, vmax=max_count))
     sm.set_array([])
     cbar = plt.colorbar(sm, ax=ax, shrink=0.6)
     cbar.set_label('Number of Contacts', fontsize=12)
-    
+    cbar.locator = mticker.MaxNLocator(integer=True)
+    cbar.update_ticks()
+
     plt.tight_layout()
-    
+
     if not output_file:
-        output_file = f"{callsign}_{band}_{region_name}_maidenhead_map.png"
-    
+        if location:
+            output_file = f"{callsign}_{band}_{location}_{region_name}_maidenhead_map.png"
+        else:
+            output_file = f"{callsign}_{band}_{region_name}_maidenhead_map.png"
+
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Map saved as {output_file}")
     print(f"{band}: {len(valid_grids)} unique grid squares, {sum(valid_grids.values())} contacts")
@@ -556,33 +794,114 @@ def main():
     
     parser = argparse.ArgumentParser(description='Generate Maidenhead grid square maps from contest logs')
     parser.add_argument('filename', help='Contest log file (.cbr for Cabrillo, .csv for CSV)')
-    parser.add_argument('--continents', nargs='+', 
+    parser.add_argument('--continents', nargs='+',
                        choices=['north_america', 'south_america', 'europe', 'africa', 'asia', 'oceania'],
                        help='Continents to include (auto-detected if not specified)')
-    
+    parser.add_argument('--paths', action='store_true',
+                       help='Also generate a local-area "path map" per band/location, showing a line '
+                            'from your home grid to each worked station (great for small-area contests '
+                            'like ARRL 10 GHz and Up). Requires a home grid, either auto-detected '
+                            'from the log or supplied with --home-grid.')
+    parser.add_argument('--home-grid', metavar='GRID',
+                       help='Your own 4- or 6-character Maidenhead grid square. Overrides auto-detection '
+                            'and forces every contact to be treated as worked from this one location '
+                            '(disables automatic per-location splitting for multi-location/rover logs).')
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
-    
+
     args = parser.parse_args()
     filename = args.filename
-    
+
     # Determine file format based on extension
     if filename.lower().endswith('.csv'):
-        grids_by_band, callsign = parse_csv_grids(filename)
+        grids_by_band, callsign, detected_home_grid, contacts_by_band = parse_csv_grids(filename)
         print(f"Parsed CSV file: {filename}")
     elif filename.lower().endswith(('.cbr', '.log')):
-        grids_by_band, callsign = parse_cabrillo_grids(filename)
+        grids_by_band, callsign, detected_home_grid, contacts_by_band = parse_cabrillo_grids(filename)
         print(f"Parsed Cabrillo file: {filename}")
     else:
         print("Unsupported file format. Use .csv, .cbr, or .log files.")
         sys.exit(1)
-    
-    if grids_by_band:
-        for band, grids in grids_by_band.items():
-            create_grid_map(grids, callsign, band, args.continents)
-    else:
+
+    if not grids_by_band:
         print("No Maidenhead grid squares found in file")
+        return
+
+    # A manual --home-grid always wins, and forces single-location treatment
+    # even if the log actually has multiple operating locations.
+    override_home_grid = None
+    if args.home_grid:
+        candidate = args.home_grid.strip().upper()
+        if is_valid_grid(candidate):
+            override_home_grid = candidate
+        else:
+            print(f"--home-grid '{args.home_grid}' is not a valid 4- or 6-character grid square")
+
+    # Detect whether this log covers more than one operating location overall
+    # (e.g. a rover moving between grids during the contest).
+    all_locations = set()
+    for contacts in contacts_by_band.values():
+        for _, _, qso_home_grid in contacts:
+            all_locations.add(qso_home_grid or detected_home_grid)
+    if override_home_grid and len(all_locations) > 1:
+        print(f"Note: {len(all_locations)} operating locations detected in this log, but --home-grid "
+              f"overrides per-location detection; treating all contacts as worked from {override_home_grid}.")
+
+    for band, grids in grids_by_band.items():
+        contacts = contacts_by_band.get(band)
+
+        if not contacts or override_home_grid:
+            # No per-contact location data available for this band (e.g. a CSV
+            # without a recognized grid column), or the user forced a single
+            # location with --home-grid: one map for the whole band, as before.
+            create_grid_map(grids, callsign, band, args.continents)
+            if args.paths:
+                home_grid = override_home_grid or detected_home_grid
+                if home_grid and detected_home_grid and not override_home_grid:
+                    print(f"Auto-detected home grid for {band}: {home_grid}")
+                if not home_grid:
+                    print(f"Skipping --paths map for {band}: no home grid available. "
+                          "Pass --home-grid GRIDSQUARE or use a log that reports your own grid per QSO.")
+                elif contacts:
+                    create_path_map(home_grid, [(c, g) for c, g, _ in contacts], callsign, band)
+                else:
+                    print(f"Skipping --paths map for {band}: no worked-station contacts were parsed")
+            continue
+
+        # Group this band's contacts by the operating location reported on
+        # each QSO, falling back to the file's overall detected home grid.
+        location_groups = defaultdict(list)
+        for their_call, their_grid, qso_home_grid in contacts:
+            loc = qso_home_grid or detected_home_grid
+            location_groups[loc].append((their_call, their_grid))
+
+        if len(location_groups) <= 1:
+            # Only one location in play for this band - keep the simple,
+            # un-suffixed output rather than adding a needless location tag.
+            create_grid_map(grids, callsign, band, args.continents)
+            if args.paths:
+                home_grid = next(iter(location_groups), None)
+                if not home_grid:
+                    print(f"Skipping --paths map for {band}: no home grid available. "
+                          "Pass --home-grid GRIDSQUARE or use a log that reports your own grid per QSO.")
+                else:
+                    create_path_map(home_grid, location_groups[home_grid], callsign, band)
+            continue
+
+        # Multiple operating locations for this band: one graphic per location.
+        location_labels = ', '.join(loc or 'Unknown' for loc in location_groups)
+        print(f"{band}: {len(location_groups)} operating locations detected ({location_labels}); "
+              f"generating a separate map per location")
+        for loc, loc_contacts in location_groups.items():
+            if not loc:
+                print(f"Skipping {band} group with no identifiable home grid ({len(loc_contacts)} contacts)")
+                continue
+            loc_grids = [g for _, g in loc_contacts]
+            create_grid_map(loc_grids, callsign, band, args.continents, location=loc)
+            if args.paths:
+                create_path_map(loc, loc_contacts, callsign, band)
 
 if __name__ == "__main__":
     main()

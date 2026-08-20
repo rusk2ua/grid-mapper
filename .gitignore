@@ -37,13 +37,19 @@ maidenhead_env/
 .DS_Store
 Thumbs.db
 
-# Generated maps
+# Generated maps (but keep curated examples committed under samples/)
 *_maidenhead_map.png
+*_grid_paths_map.png
+!samples/*_maidenhead_map.png
+!samples/*_grid_paths_map.png
 
 # Log files (but keep example)
 *.log
 K1TO_2025_Sep_VHF.log
 !example_contest.cbr
+
+# Personal contest logs (not for distribution)
+logs/
 
 # Temporary files
 *.tmp

@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-20
+
+### Added
+- `--paths` CLI option: generates a local-area "path map" per band showing your
+  home grid station connected by a line to each worked station, labeled with
+  callsign and distance in kilometers (matching ARRL 10 GHz and Up Contest
+  scoring, which is distance-based in km). Aimed at small-geographic-area
+  contests, to show local operators and newcomers what's achievable.
+- `--home-grid GRID` CLI option to explicitly set or override the home
+  station's grid square used as the origin for `--paths` (falls back to
+  auto-detection from the log when omitted); also forces single-location
+  treatment for logs that would otherwise be split by location (see below).
+- Automatic home-grid detection from Cabrillo QSO exchange fields and from CSV
+  files that include a "my grid" style column (`my_grid`, `mygrid`,
+  `my_gridsquare`, `home_grid`, `station_grid`, `source_grid`).
+- Automatic multi-location detection and splitting: a log that reports more
+  than one home grid across its QSOs (e.g. a rover working the contest from
+  several stops) now gets a separate contact-density map, and — with
+  `--paths` — a separate path map, for every band/location combination,
+  instead of merging physically distant operating points into one map.
+- `grid_center()`, `haversine_distance()`, `grid_distance_km()`, and
+  `grid_distance_miles()` helpers for great-circle distance between grid
+  square centers.
+- Recognition of whole-GHz frequency shorthand ("10", "24", "47", "75", "123")
+  used by some contest logging software for the ARRL 10 GHz and Up Contest,
+  mapped to the existing "10G"/"24G"/"47G"/"75G"/"123G" band labels.
+- `logs/` added to `.gitignore` so personal contest logs aren't tracked by git.
+
+### Fixed
+- Cabrillo parsing no longer counts the logging station's own grid square as a
+  worked-station contact. Previously, when a QSO's exchange included the
+  operator's own grid (common for 6-character microwave-contest exchanges),
+  it was appended to that band's contact list on every QSO line, inflating
+  that grid square's contact-density count and coloring.
+- Frequency values reported as a bare GHz number (e.g. `10` for 10 GHz) were
+  previously mislabeled as, e.g., `10MHz`; they're now correctly recognized as
+  the corresponding microwave contest band.
+
+### Changed
+- Path map distances are now labeled in kilometers instead of statute miles.
+- The contact-density map's colorbar now shows whole-number ticks only, since
+  fractional contact counts aren't meaningful.
+- `parse_cabrillo_grids()` and `parse_csv_grids()` now return two additional
+  values: the detected (overall most common) `home_grid` and a
+  `contacts_by_band` dict of `(callsign, grid, qso_home_grid)` tuples per
+  band, used to build path maps and to detect/split multi-location logs.
+- Path map filenames now always include the home grid
+  (`{callsign}_{band}_{home_grid}_{region}_grid_paths_map.png`), and
+  contact-density map filenames include the home grid too when a log has
+  multiple operating locations, so per-location graphics never collide.
+- `setup.py` version synced to match this release (was previously stuck at
+  1.0.0 while `CHANGELOG.md` had already moved past it).
+
 ## [1.2.0] - 2025-09-17
 
 ### Added
