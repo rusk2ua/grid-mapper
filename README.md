@@ -16,6 +16,7 @@ A Python tool that creates color-coded maps of Maidenhead grid squares from amat
 - **Multi-Location Detection**: Rover and multi-op logs that report a different home grid on different QSOs (e.g. a rover moving between stops) are automatically split into a separate graphic per band *and* per operating location, instead of mixing locations together on one map
 - **Whole-Number Contact Scale**: The contact-density color scale only ever shows whole numbers, since there's no such thing as a fractional contact
 - **OpenStreetMap Basemap**: `--osm-basemap` adds a faint (default 30% opacity, adjustable with `--osm-opacity`) OpenStreetMap street-level tile layer underneath every map generated for 902 MHz and higher bands (33cm and up), on top of which all the usual layers still draw normally
+- **Interactive HTML Maps**: `--html` generates a website-ready interactive version of every map produced in the same run — hover (or tap, on mobile) a grid square or worked-station point to see a popup with that contact's callsign, date, six-character grid, and other QSO details
 
 ## Sample Output
 
@@ -145,6 +146,49 @@ A few things worth knowing:
 - Works together with `--paths` and with multi-location/rover logs — every
   graphic generated for an eligible band gets the same underlay.
 
+### Interactive HTML Maps (`--html`)
+
+For putting your maps on a website, `--html` generates an interactive HTML
+version of every map produced in the same run — density maps, and path maps
+when `--paths` is used — alongside the existing PNGs:
+
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths --html
+```
+
+The HTML output looks the same as the PNG (same coastlines/borders/land/ocean,
+same colors, same `--osm-basemap`/`--osm-opacity` underlay if requested), but
+each grid square (on the density map) or worked-station point (on the path
+map) is interactive: hovering over it with a mouse, or tapping it on a phone
+or tablet, pops up a small card with:
+- the callsign, in larger type
+- the date (and time, if available) of the contact
+- the six-character grid square
+- whatever other QSO details are available — mode, frequency, and (for
+  Cabrillo logs) any leftover exchange fields the tool couldn't otherwise
+  place, such as a serial number
+
+If a grid square or point represents more than one contact, every distinct
+callsign worked there is listed. A repeat contact with the *same* station is
+collapsed to just the most recent one, with a `(×N)` count next to the
+callsign — so, e.g., a station worked 3 times from the same grid shows as
+one entry: `W1ABC (×3)`.
+
+Each `.html` file is fully self-contained aside from two small library files
+it loads from a public CDN ([Leaflet](https://leafletjs.com/), for the
+interactive map) — no server or build step needed, just open the file in a
+browser or upload it to your website alongside (or instead of) the PNG. When
+`--osm-basemap` is also used, the visitor's own browser fetches the OpenStreetMap
+tiles directly, so — like the PNG version — this needs internet access, but
+now at *viewing* time rather than at generation time.
+
+Output filenames match the PNG naming exactly, just with a `.html` extension:
+`K2UA_10G_EN91KT_northeastern_north_america_grid_paths_map.html`.
+
+CSV-format logs get best-effort popups using whatever columns are present
+(callsign, grid, and date if available) — Cabrillo logs carry more detail
+(mode, frequency, exchange fields) so their popups are more complete.
+
 ### Available Continents
 - `north_america` - North America
 - `south_america` - South America  
@@ -185,6 +229,7 @@ The script automatically detects common CSV column names:
 | `--home-grid GRID` | Your 4- or 6-character home grid square; overrides auto-detection and forces a single location (disables the per-location split described in [Multi-Location (Rover) Logs](#multi-location-rover-logs)) |
 | `--osm-basemap` | Add a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands (see [OpenStreetMap Basemap](#openstreetmap-basemap---osm-basemap)) |
 | `--osm-opacity 0.0-1.0` | Opacity of the `--osm-basemap` underlay (default `0.3`, i.e. 30%); has no effect without `--osm-basemap` |
+| `--html` | Also generate an interactive HTML version of every map produced in this run (see [Interactive HTML Maps](#interactive-html-maps---html)) |
 
 ## Output Files
 
@@ -195,6 +240,7 @@ operating location) with descriptive filenames:
 - `K1TO_70cm_world_maidenhead_map.png` - 70cm band, worldwide, single location
 - `K5TR_10G_EM00UF_central_north_america_grid_paths_map.png` - 10G band path map (with `--paths`)
 - `K2UA_10G_EN91KT_northeastern_north_america_maidenhead_map.png` - 10G band, one of several rover locations
+- `K5TR_10G_EM00UF_central_north_america_grid_paths_map.html` - the same 10G path map, interactive (with `--html`)
 
 ## Supported Bands
 
@@ -246,8 +292,10 @@ operating location) with descriptive filenames:
 - cartopy
 - Pillow (used by cartopy for the `--osm-basemap` tile layer)
 - scipy (used by cartopy to reproject the `--osm-basemap` tile layer)
+- shapely (used to embed background geography in `--html` output)
 - numpy (installed with matplotlib)
 - Internet access at run time if using `--osm-basemap` (to fetch OpenStreetMap tiles)
+- Internet access when *viewing* `--html` output (to load Leaflet from its CDN, and OpenStreetMap tiles if `--osm-basemap` was also used)
 
 ## Examples
 
@@ -294,10 +342,21 @@ operators exactly which roads and towns their contacts correspond to. The
 overlay only applies to bands at 902 MHz and up, so a log with lower-band
 contacts would generate those maps without it, unaffected by the flag.
 
+### Example 7: Interactive HTML for a website
+```bash
+python maidenhead_map.py your_10g_log.cbr --paths --html --osm-basemap
+```
+Generates the usual PNGs plus a matching `.html` file for each one. Drop the
+`.html` files into your website and visitors can hover (or tap, on mobile)
+any grid square or worked-station point to see who was worked, when, and
+from which six-character grid — a more engaging way to show off local
+VHF/UHF/microwave activity than a static image.
+
 ## Revision History
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.5.0 | 2026-08-23 | Added `--html` to generate an interactive, website-ready HTML version of every map produced in a run (density maps and, with `--paths`, path maps). Grid squares / worked-station points become hoverable (desktop) or tappable (mobile) with a popup showing callsign, date, six-character grid, and other QSO details; repeat contacts with the same station collapse to a `(×N)` count. Visually matches the PNG output, including the `--osm-basemap` underlay at the same opacity. Built on Leaflet (loaded from a CDN); background coastlines/borders/land/ocean are embedded per-file from the same Natural Earth data cartopy already uses. Added `shapely` to requirements. |
 | 1.4.1 | 2026-08-20 | Fixed `--osm-basemap` crashing with `ImportError: ... requires either pykdtree or scipy` on installs without one of those already present; added `scipy` to requirements. |
 | 1.4.0 | 2026-08-20 | Added `--osm-basemap` (with `--osm-opacity`, default 30%) to overlay a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands, with automatic attribution; added `Pillow` to requirements; fixed a matplotlib figure-leak in contact-density map generation that showed up on large multi-location/multi-band runs. |
 | 1.3.0 | 2026-08-20 | Added `--paths` local-area path maps (home grid → each worked station, labeled with callsign + distance in km) for small-area contests like ARRL 10 GHz and Up; added `--home-grid` override; automatic per-band-and-per-location splitting for rover/multi-op logs that report more than one home grid; contact-density color scale now shows whole numbers only; fixed Cabrillo parsing double-counting the operator's own grid as a worked-station contact; fixed bare-GHz frequency values (e.g. `10` for 10 GHz) being mislabeled instead of recognized as `10G`/`24G`/`47G`/`75G`/`123G`. |

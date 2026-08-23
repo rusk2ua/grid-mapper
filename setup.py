@@ -10,7 +10,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="maidenhead-contest-maps",
-    version="1.4.1",
+    version="1.5.0",
     author="Amateur Radio Community",
     description="Generate color-coded maps of Maidenhead grid squares from contest logs",
     long_description=long_description,

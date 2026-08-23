@@ -2,12 +2,16 @@
 import re
 import csv
 import math
+import json
+import html as html_module
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
+import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.img_tiles as cimgt
+from shapely.geometry import box as shapely_box, mapping as shapely_mapping
 from collections import Counter, defaultdict
 
 # Minimum frequency, in MHz, for each band label this script produces.
@@ -166,17 +170,23 @@ def get_grid_continent(grid):
 def parse_csv_grids(filename):
     """Extract Maidenhead grid squares by band from CSV format file.
 
-    Returns (grids_by_band, callsign, home_grid, contacts_by_band). home_grid
-    comes from a "my grid" style column if the CSV has one; otherwise None
-    (the caller can fall back to a --home-grid CLI override).
+    Returns (grids_by_band, callsign, home_grid, contacts_by_band,
+    qso_records_by_band). home_grid comes from a "my grid" style column if
+    the CSV has one; otherwise None (the caller can fall back to a
+    --home-grid CLI override).
     contacts_by_band maps band -> list of (their_callsign, their_grid,
     qso_home_grid) tuples, used for the --paths map; callsign is "Unknown" if
     no callsign column could be identified. qso_home_grid is that row's own
     "my grid" value (or None), letting a log with multiple operating
     locations be split per location.
+    qso_records_by_band maps band -> list of per-contact detail dicts, in the
+    same order as contacts_by_band[band], used for the --html interactive
+    popups. CSV files rarely carry as much detail as Cabrillo logs, so
+    fields that have no matching column are simply omitted (None / empty).
     """
     grids_by_band = defaultdict(list)
     contacts_by_band = defaultdict(list)
+    qso_records_by_band = defaultdict(list)
     callsign = "Unknown"
     home_grid_candidates = Counter()
 
@@ -189,41 +199,45 @@ def parse_csv_grids(filename):
             callsign_match = re.search(r'\b([A-Z]{1,2}[0-9][A-Z]{1,3})\b', first_line)
             if callsign_match:
                 callsign = callsign_match.group(1)
-            
+
             # Find the actual header row by looking for multiple field names together
             f.seek(0)
             lines = f.readlines()
             header_row_idx = 0
-            
+
             for i, line in enumerate(lines):
                 line_lower = line.lower()
                 # Look for multiple header fields in the same line
-                field_count = sum(1 for field in ['date', 'time', 'call', 'grid', 'freq', 'band'] 
+                field_count = sum(1 for field in ['date', 'time', 'call', 'grid', 'freq', 'band']
                                 if field in line_lower)
                 if field_count >= 3:  # Need at least 3 fields to be a header row
                     header_row_idx = i
                     break
-            
+
             # Read from the header row
             f.seek(0)
             for _ in range(header_row_idx):
                 f.readline()
-            
+
             reader = csv.DictReader(f)
             headers = [h.lower().strip() for h in reader.fieldnames] if reader.fieldnames else []
-            
+
             # Common field mappings - use original case for keys
             original_headers = reader.fieldnames if reader.fieldnames else []
             freq_fields = ['freq', 'frequency', 'band', 'freq_mhz']
             grid_fields = ['grid', 'gridsquare', 'grid_square', 'their_grid', 'dx_grid']
             call_fields = ['call', 'callsign', 'station_callsign', 'my_call']
             home_grid_fields = ['my_grid', 'mygrid', 'my_gridsquare', 'home_grid', 'station_grid', 'source_grid']
+            date_fields = ['date', 'qso_date']
+            time_fields = ['time', 'qso_time']
 
             # Find fields by matching lowercase versions
             freq_field = None
             grid_field = None
             call_field = None
             home_grid_field = None
+            date_field = None
+            time_field = None
 
             for orig, lower in zip(original_headers, headers):
                 if not freq_field and lower in freq_fields:
@@ -234,6 +248,10 @@ def parse_csv_grids(filename):
                     call_field = orig
                 if not home_grid_field and lower in home_grid_fields:
                     home_grid_field = orig
+                if not date_field and lower in date_fields:
+                    date_field = orig
+                if not time_field and lower in time_fields:
+                    time_field = orig
 
             for row in reader:
                 # Extract frequency/band
@@ -260,6 +278,16 @@ def parse_csv_grids(filename):
                         grids_by_band[band].append(grid)
                         their_call = row[call_field].strip().upper() if call_field else "Unknown"
                         contacts_by_band[band].append((their_call or "Unknown", grid, qso_home_grid))
+                        qso_records_by_band[band].append({
+                            'call': their_call or "Unknown",
+                            'grid': grid,
+                            'home_grid': qso_home_grid,
+                            'date': row[date_field].strip() if date_field else None,
+                            'time': row[time_field].strip() if time_field else None,
+                            'freq': row[freq_field].strip() if freq_field else None,
+                            'mode': None,
+                            'extra': [],
+                        })
 
                 # Also check all fields for grid patterns if no specific grid field
                 if not grid_field:
@@ -269,28 +297,36 @@ def parse_csv_grids(filename):
 
     except Exception as e:
         print(f"Error parsing CSV file: {e}")
-        return {}, callsign, None, {}
+        return {}, callsign, None, {}, {}
 
     home_grid = home_grid_candidates.most_common(1)[0][0] if home_grid_candidates else None
 
-    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band)
+    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band), dict(qso_records_by_band)
 
 def parse_cabrillo_grids(filename):
     """Extract Maidenhead grid squares by band from Cabrillo format file.
 
-    Returns (grids_by_band, callsign, home_grid, contacts_by_band). home_grid
-    is the logging station's overall (most common) grid square, auto-detected
-    from the QSO exchange fields (Cabrillo QSO lines are: QSO: freq mode date
-    time mycall myexch theircall theirexch). It is excluded from grids_by_band
-    so it isn't double-counted as if it were a worked station.
+    Returns (grids_by_band, callsign, home_grid, contacts_by_band,
+    qso_records_by_band). home_grid is the logging station's overall (most
+    common) grid square, auto-detected from the QSO exchange fields
+    (Cabrillo QSO lines are: QSO: freq mode date time mycall myexch theircall
+    theirexch). It is excluded from grids_by_band so it isn't double-counted
+    as if it were a worked station.
     contacts_by_band maps band -> list of (their_callsign, their_grid,
     qso_home_grid) tuples, used for the --paths map. qso_home_grid is the
     operator's own grid as reported on that specific QSO line (or None if not
     present on that line), which lets a rover log with multiple operating
     locations be split per location.
+    qso_records_by_band maps band -> list of per-contact detail dicts, in the
+    same order as contacts_by_band[band] (one dict per worked-station grid),
+    used to build the --html interactive popups: call, grid, home_grid, date,
+    time, freq (raw), mode, and extra (any exchange tokens that weren't
+    consumed as a callsign or grid, e.g. a serial number some contest
+    exchanges include).
     """
     grids_by_band = defaultdict(list)
     contacts_by_band = defaultdict(list)
+    qso_records_by_band = defaultdict(list)
     callsign = "Unknown"
     home_grid_candidates = Counter()
 
@@ -304,6 +340,9 @@ def parse_cabrillo_grids(filename):
                     parts = line.split()
                     if len(parts) >= 6:
                         freq = parts[1]
+                        mode = parts[2]
+                        date = parts[3]
+                        qso_time = parts[4]
                         band = freq_to_band(freq)
 
                         # Fields after "QSO: freq mode date time mycall" are the
@@ -320,21 +359,41 @@ def parse_cabrillo_grids(filename):
                             remaining_fields = exchange_fields[1:]
 
                         # Pair each worked-station grid with the callsign token
-                        # that immediately precedes it in the exchange.
+                        # that immediately precedes it in the exchange. Any
+                        # token that gets overwritten as "last_call" before
+                        # ever being used (e.g. a serial number ahead of the
+                        # real callsign) is kept as an "extra" detail instead
+                        # of silently discarded.
                         last_call = None
+                        pending_extra = []
                         for field in remaining_fields:
                             if is_valid_grid(field):
+                                call = last_call or "Unknown"
                                 grids_by_band[band].append(field)
-                                contacts_by_band[band].append((last_call or "Unknown", field, qso_home_grid))
+                                contacts_by_band[band].append((call, field, qso_home_grid))
+                                qso_records_by_band[band].append({
+                                    'call': call,
+                                    'grid': field,
+                                    'home_grid': qso_home_grid,
+                                    'date': date,
+                                    'time': qso_time,
+                                    'freq': freq,
+                                    'mode': mode,
+                                    'extra': list(pending_extra),
+                                })
+                                last_call = None
+                                pending_extra = []
                             else:
+                                if last_call is not None:
+                                    pending_extra.append(last_call)
                                 last_call = field
     except FileNotFoundError:
         print(f"File {filename} not found")
-        return {}, callsign, None, {}
+        return {}, callsign, None, {}, {}
 
     home_grid = home_grid_candidates.most_common(1)[0][0] if home_grid_candidates else None
 
-    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band)
+    return dict(grids_by_band), callsign, home_grid, dict(contacts_by_band), dict(qso_records_by_band)
 
 def is_valid_grid(grid):
     """Check if string is a valid Maidenhead grid square"""
@@ -593,6 +652,250 @@ def filter_grids_by_continents(grids, continents):
     
     return filtered
 
+def _esc(text):
+    """HTML-escape a value for safe embedding in generated popup markup."""
+    return html_module.escape(str(text)) if text is not None else ''
+
+def _format_qso_detail_lines(rec):
+    """Build the 'date/time' and 'other details' display strings for one QSO
+    detail record (see parse_cabrillo_grids/parse_csv_grids)."""
+    date_time_bits = []
+    if rec.get('date'):
+        date_time_bits.append(str(rec['date']))
+    t = rec.get('time')
+    if t:
+        t = str(t)
+        date_time_bits.append(f"{t[:2]}:{t[2:]}Z" if len(t) == 4 else t)
+    date_line = ' '.join(date_time_bits)
+
+    detail_bits = []
+    if rec.get('mode'):
+        detail_bits.append(str(rec['mode']))
+    if rec.get('freq'):
+        detail_bits.append(str(rec['freq']))
+    detail_line = '  '.join(detail_bits)
+
+    return date_line, detail_line, (rec.get('extra') or [])
+
+def _group_qso_records_for_popup(records):
+    """Group QSO records sharing a grid square / worked-station dot by
+    callsign. Repeat contacts with the SAME station collapse to just the
+    most recent one, annotated with a "(xN)" count; different callsigns
+    worked from the same grid each get their own listed entry."""
+    by_call = defaultdict(list)
+    order = []
+    for rec in records:
+        call = rec.get('call') or "Unknown"
+        if call not in by_call:
+            order.append(call)
+        by_call[call].append(rec)
+
+    groups = []
+    for call in order:
+        recs_sorted = sorted(by_call[call], key=lambda r: (r.get('date') or '', r.get('time') or ''))
+        groups.append((call, len(recs_sorted), recs_sorted[-1]))
+    return groups
+
+def _build_popup_html(grid, records):
+    """Build the interactive popup content for one grid square / worked-
+    station dot: callsign in larger type, then date, then the six-character
+    grid, then whatever other QSO details are available (mode, frequency,
+    any leftover exchange tokens). Multiple contacts to the same grid are
+    listed; repeat contacts with the same station collapse to the most
+    recent one with a "(xN)" count."""
+    if not records:
+        return (f'<div class="qso-popup"><div class="qso-grid">{_esc(grid)}</div>'
+                f'<div class="qso-detail">No contact details available</div></div>')
+
+    parts = ['<div class="qso-popup">']
+    for call, count, rec in _group_qso_records_for_popup(records):
+        call_label = call if count <= 1 else f"{call} (×{count})"
+        date_line, detail_line, extra = _format_qso_detail_lines(rec)
+        parts.append('<div class="qso-entry">')
+        parts.append(f'<div class="qso-call">{_esc(call_label)}</div>')
+        if date_line:
+            parts.append(f'<div class="qso-date">{_esc(date_line)}</div>')
+        parts.append(f'<div class="qso-grid">{_esc(rec.get("grid") or grid)}</div>')
+        if detail_line:
+            parts.append(f'<div class="qso-detail">{_esc(detail_line)}</div>')
+        if extra:
+            parts.append(f'<div class="qso-extra">{_esc(" ".join(str(x) for x in extra))}</div>')
+        parts.append('</div>')
+    parts.append('</div>')
+    return ''.join(parts)
+
+def _geojson_geoms_for_bbox(feature, lon_min, lon_max, lat_min, lat_max):
+    """Extract a cartopy Feature's geometries as plain GeoJSON geometry
+    dicts, clipped and simplified to the given lon/lat bounding box so the
+    embedded --html output stays a reasonable size. Returns [] (background
+    for that layer simply omitted) if the geometry can't be read."""
+    geoms = []
+    try:
+        bbox_poly = shapely_box(lon_min, lat_min, lon_max, lat_max)
+        span = max(lon_max - lon_min, 0.01)
+        tolerance = max(span / 800, 0.0005)
+        for geom in feature.geometries():
+            try:
+                if not geom.intersects(bbox_poly):
+                    continue
+                clipped = geom.intersection(bbox_poly)
+                if clipped.is_empty:
+                    continue
+                clipped = clipped.simplify(tolerance, preserve_topology=True)
+                geoms.append(shapely_mapping(clipped))
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"Warning: could not embed background geography for HTML output ({e})")
+    return geoms
+
+def _background_geojson(lon_min, lon_max, lat_min, lat_max):
+    """Coastline/borders/land/ocean/lakes geometry for the --html background,
+    matching the layers create_grid_map/create_path_map always draw on the
+    PNG output (independent of, and in addition to, the optional
+    --osm-basemap tile underlay)."""
+    return {
+        'land': _geojson_geoms_for_bbox(cfeature.LAND, lon_min, lon_max, lat_min, lat_max),
+        'ocean': _geojson_geoms_for_bbox(cfeature.OCEAN, lon_min, lon_max, lat_min, lat_max),
+        'coastline': _geojson_geoms_for_bbox(cfeature.COASTLINE, lon_min, lon_max, lat_min, lat_max),
+        'borders': _geojson_geoms_for_bbox(cfeature.BORDERS, lon_min, lon_max, lat_min, lat_max),
+        'lakes': _geojson_geoms_for_bbox(cfeature.LAKES, lon_min, lon_max, lat_min, lat_max),
+    }
+
+_LEAFLET_PAGE_TEMPLATE = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  #titlebar { background:#1a1a1a; color:#fff; padding:10px 16px; font-size:15px; font-weight:700;
+              text-align:center; white-space:pre-line; line-height:1.4; }
+  #map-wrap { position:relative; height: calc(100% - 56px); min-height:300px; }
+  #map { position:absolute; top:0; bottom:0; left:0; right:0; background:#eef3f7; }
+  .field-label { color:#1a3fa0; font-weight:700; font-size:13px;
+                 text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; pointer-events:none; }
+  .corner-label { color:#000; font-weight:700; font-size:10px;
+                  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; pointer-events:none; }
+  .home-star { font-size:26px; line-height:26px; color:gold;
+               text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
+  .station-label { font-weight:700; font-size:11px; background:rgba(255,255,255,0.85);
+                    border:none; box-shadow:none; white-space:pre-line; }
+  .qso-popup { min-width:150px; }
+  .qso-entry { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #eee; }
+  .qso-entry:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .qso-call { font-size:17px; font-weight:700; margin-bottom:2px; }
+  .qso-date, .qso-grid, .qso-detail { font-size:12px; color:#333; }
+  .qso-extra { font-size:11px; color:#777; font-style:italic; margin-top:2px; }
+  #legend { position:absolute; bottom:20px; right:10px; background:rgba(255,255,255,0.92);
+            padding:8px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);
+            font-size:12px; z-index:1000; display:none; }
+  #legend .bar { width:16px; height:100px; background: linear-gradient(to top, #fff5f0, #a50f15);
+                 border:1px solid #999; float:left; margin-right:6px; }
+  #legend .labels { display:flex; flex-direction:column; justify-content:space-between; height:100px; }
+</style>
+</head>
+<body>
+<div id="titlebar">__TITLEBAR__</div>
+<div id="map-wrap"><div id="map"></div><div id="legend"></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DATA = __DATA_JSON__;
+(function () {
+  var map = L.map('map', { scrollWheelZoom: true });
+  var b = DATA.bounds;
+  map.fitBounds([[b[0][0], b[0][1]], [b[1][0], b[1][1]]]);
+
+  if (DATA.osm) {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      opacity: DATA.osm.opacity, maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  }
+
+  function addGeoms(geoms, style) {
+    (geoms || []).forEach(function (g) { L.geoJSON(g, { style: style }).addTo(map); });
+  }
+  var bg = DATA.background || {};
+  addGeoms(bg.ocean, { color: '#7fb8d8', weight: 0, fillColor: '#c6e2f0', fillOpacity: 0.35 });
+  addGeoms(bg.land, { color: '#bbb', weight: 0, fillColor: '#e6e6e6', fillOpacity: 0.35 });
+  addGeoms(bg.lakes, { color: '#4a90d9', weight: 0.7, fillOpacity: 0 });
+  addGeoms(bg.coastline, { color: '#333', weight: 1, fillOpacity: 0 });
+  addGeoms(bg.borders, { color: '#666', weight: 0.6, fillOpacity: 0 });
+
+  (DATA.gridOutlines || []).forEach(function (r) {
+    L.rectangle([[r[0], r[1]], [r[2], r[3]]], { color: '#ccc', weight: 0.5, fillOpacity: 0 }).addTo(map);
+  });
+
+  function bindHoverPopup(layer, popupHtml) {
+    layer.bindPopup(popupHtml, { maxWidth: 260 });
+    layer.on('mouseover', function () { this.openPopup(); });
+    layer.on('mouseout', function () { this.closePopup(); });
+  }
+
+  (DATA.rectangles || []).forEach(function (r) {
+    var rect = L.rectangle([[r.bounds[0][0], r.bounds[0][1]], [r.bounds[1][0], r.bounds[1][1]]], {
+      color: '#000', weight: 0.6, fillColor: r.color, fillOpacity: 0.85
+    }).addTo(map);
+    bindHoverPopup(rect, r.popup);
+  });
+
+  (DATA.fieldLabels || []).forEach(function (l) {
+    L.marker([l.lat, l.lon], {
+      icon: L.divIcon({ className: 'field-label', html: l.text, iconSize: [30, 18] }),
+      interactive: false
+    }).addTo(map);
+  });
+  (DATA.cornerLabels || []).forEach(function (l) {
+    L.marker([l.lat, l.lon], {
+      icon: L.divIcon({ className: 'corner-label', html: l.text, iconSize: [40, 14] }),
+      interactive: false
+    }).addTo(map);
+  });
+
+  if (DATA.legend) {
+    var el = document.getElementById('legend');
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">Contacts</div>' +
+      '<div class="bar"></div><div class="labels"><span>' + DATA.legend.max +
+      '</span><span>' + DATA.legend.min + '</span></div><div style="clear:both;"></div>';
+  }
+
+  (DATA.lines || []).forEach(function (ln) {
+    L.polyline(ln, { color: 'crimson', weight: 1.5, opacity: 0.85 }).addTo(map);
+  });
+
+  (DATA.markers || []).forEach(function (m) {
+    var dot = L.circleMarker([m.lat, m.lon], {
+      radius: 6, color: '#000', weight: 0.8, fillColor: 'crimson', fillOpacity: 0.9
+    }).addTo(map);
+    bindHoverPopup(dot, m.popup);
+    dot.bindTooltip(m.label, { permanent: true, direction: 'right', offset: [6, 0], className: 'station-label' });
+  });
+
+  if (DATA.home) {
+    var star = L.marker([DATA.home.lat, DATA.home.lon], {
+      icon: L.divIcon({ className: '', html: '<div class="home-star">★</div>', iconSize: [30, 30], iconAnchor: [15, 15] })
+    }).addTo(map);
+    star.bindTooltip(DATA.home.label, { permanent: true, direction: 'top', className: 'station-label' });
+  }
+})();
+</script>
+</body>
+</html>
+"""
+
+def _write_leaflet_html(data, output_file, page_title):
+    """Render one interactive Leaflet map page from a data dict built by
+    create_grid_map_html/create_path_map_html."""
+    out = _LEAFLET_PAGE_TEMPLATE.replace('__TITLE__', _esc(page_title))
+    out = out.replace('__TITLEBAR__', _esc(data.get('title', page_title)).replace('\n', '<br>'))
+    out = out.replace('__DATA_JSON__', json.dumps(data))
+    with open(output_file, 'w') as f:
+        f.write(out)
+
 def create_path_map(home_grid, contacts, callsign, band, output_file=None,
                      osm_basemap=False, osm_opacity=0.3):
     """Create a local-area 'path map' for a single band: a marker for the home
@@ -709,6 +1012,84 @@ def create_path_map(home_grid, contacts, callsign, band, output_file=None,
     print(f"Path map saved as {output_file}")
     print(f"{band}: {len(unique_contacts)} contacts plotted from home grid {home_grid}, "
           f"longest path {max_dist:.1f} km")
+
+def create_path_map_html(home_grid, contacts, qso_records, callsign, band, output_file=None,
+                          osm_basemap=False, osm_opacity=0.3):
+    """Interactive HTML counterpart to create_path_map: same home star, lines
+    and worked-station dots, but each dot is hoverable/tappable to show a
+    popup with that contact's details (callsign, date, six-character grid,
+    and other QSO details). Visually matches create_path_map's look,
+    including the optional --osm-basemap underlay at the same opacity.
+
+    qso_records is this band/location's full list of QSO detail dicts (see
+    parse_cabrillo_grids/parse_csv_grids) — not deduplicated — so a dot
+    representing more than one contact to the same grid can show all of them
+    in its popup.
+    """
+    home_center = grid_center(home_grid)
+    if not home_center:
+        print(f"Cannot plot HTML paths for {band}: invalid home grid '{home_grid}'")
+        return
+
+    seen = set()
+    unique_contacts = []
+    for their_call, their_grid in contacts:
+        key = (their_call, their_grid)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_contacts.append((their_call, their_grid))
+
+    if not unique_contacts:
+        print(f"No valid worked-station grids to plot for {band} (HTML)")
+        return
+
+    records_by_grid = defaultdict(list)
+    for rec in (qso_records or []):
+        records_by_grid[rec.get('grid')].append(rec)
+
+    home_lat, home_lon = home_center
+    all_grids = [home_grid] + [g for _, g in unique_contacts]
+    lon_min, lon_max, lat_min, lat_max = get_optimal_bounds(all_grids)
+    region_name = get_region_name(lon_min, lon_max, lat_min, lat_max)
+
+    lines = []
+    markers = []
+    distances = []
+    for their_call, their_grid in unique_contacts:
+        center = grid_center(their_grid)
+        if not center:
+            continue
+        their_lat, their_lon = center
+        lines.append([[home_lat, home_lon], [their_lat, their_lon]])
+        distance = grid_distance_km(home_grid, their_grid)
+        if distance is not None:
+            distances.append(distance)
+        label = their_call + (f"\n{distance:.1f} km" if distance is not None else '')
+        markers.append({
+            'lat': their_lat, 'lon': their_lon, 'label': label,
+            'popup': _build_popup_html(their_grid, records_by_grid.get(their_grid, [])),
+        })
+
+    max_dist = max(distances) if distances else 0
+
+    data = {
+        'title': (f'{callsign} - {band} Band - Contacts from {home_grid}\n'
+                  f'{region_name.replace("_", " ").title()} — {len(unique_contacts)} contacts, '
+                  f'longest {max_dist:.1f} km'),
+        'bounds': [[lat_min, lon_min], [lat_max, lon_max]],
+        'osm': {'opacity': osm_opacity} if (osm_basemap and band_is_osm_eligible(band)) else None,
+        'background': _background_geojson(lon_min, lon_max, lat_min, lat_max),
+        'home': {'lat': home_lat, 'lon': home_lon, 'label': f"{callsign} ({home_grid})"},
+        'lines': lines,
+        'markers': markers,
+    }
+
+    if not output_file:
+        output_file = f"{callsign}_{band}_{home_grid}_{region_name}_grid_paths_map.html"
+
+    _write_leaflet_html(data, output_file, f"{callsign} - {band} - {home_grid}")
+    print(f"Interactive path map saved as {output_file}")
 
 def create_grid_map(grids, callsign, band, continents=None, output_file=None, location=None,
                      osm_basemap=False, osm_opacity=0.3):
@@ -867,6 +1248,116 @@ def create_grid_map(grids, callsign, band, continents=None, output_file=None, lo
     print(f"Map saved as {output_file}")
     print(f"{band}: {len(valid_grids)} unique grid squares, {sum(valid_grids.values())} contacts")
 
+def create_grid_map_html(grids, qso_records, callsign, band, continents=None, output_file=None,
+                          location=None, osm_basemap=False, osm_opacity=0.3):
+    """Interactive HTML counterpart to create_grid_map: same color-coded grid
+    squares, field labels and (for 6-character grids) corner labels, but
+    each grid square is hoverable/tappable to show a popup listing the QSOs
+    worked there (callsign, date, six-character grid, other QSO details).
+    Visually matches create_grid_map's look, including the optional
+    --osm-basemap underlay at the same opacity.
+
+    qso_records is this band/location's full list of QSO detail dicts (see
+    parse_cabrillo_grids/parse_csv_grids).
+    """
+    grid_counts = Counter(grids)
+
+    if continents is None:
+        continents = auto_select_continents(grids)
+
+    valid_grids = filter_grids_by_continents(grid_counts, continents)
+    if not valid_grids:
+        print(f"No valid grid squares found for {band} in selected continents (HTML)")
+        return
+
+    has_6digit_grids = any(len(grid) == 6 for grid in valid_grids.keys())
+    lon_min, lon_max, lat_min, lat_max = get_optimal_bounds(valid_grids.keys())
+    region_name = get_region_name(lon_min, lon_max, lat_min, lat_max)
+
+    records_by_grid = defaultdict(list)
+    for rec in (qso_records or []):
+        records_by_grid[rec.get('grid')].append(rec)
+
+    vhf_uhf_bands = ['6m', '2m', '1.25m', '70cm', '33cm', '23cm', '13cm', '9cm', '6cm', '3cm',
+                      '1.25cm', '6mm', '4mm', '2.5mm', '2mm', '1mm', '10G', '24G', '47G', '75G', '123G']
+    grid_outlines = []
+    if band in vhf_uhf_bands or 'GHz' in band:
+        for lat in range(int(lat_min) - 1, int(lat_max) + 2):
+            for lon in range(int(lon_min) - 2, int(lon_max) + 3, 2):
+                if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+                    grid_outlines.append([lat, lon, lat + 1, lon + 2])
+
+    max_count = max(valid_grids.values())
+    rectangles = []
+    for grid, count in valid_grids.items():
+        bounds = maidenhead_to_bounds(grid)
+        if not bounds:
+            continue
+        grid_lat_min, grid_lat_max, grid_lon_min, grid_lon_max = bounds
+        intensity = count / max_count
+        color = mcolors.to_hex(plt.cm.Reds(0.3 + 0.7 * intensity))
+        rectangles.append({
+            'bounds': [[grid_lat_min, grid_lon_min], [grid_lat_max, grid_lon_max]],
+            'color': color,
+            'popup': _build_popup_html(grid, records_by_grid.get(grid, [])),
+        })
+
+    corner_labels = []
+    if has_6digit_grids:
+        seen_4digit = set()
+        for grid in valid_grids.keys():
+            if len(grid) >= 4:
+                grid_4digit = grid[:4]
+                if grid_4digit in seen_4digit:
+                    continue
+                seen_4digit.add(grid_4digit)
+                bounds = maidenhead_to_bounds(grid_4digit)
+                if bounds:
+                    g_lat_min, g_lat_max, g_lon_min, g_lon_max = bounds
+                    corner_labels.append({
+                        'lat': g_lat_min + (g_lat_max - g_lat_min) * 0.05,
+                        'lon': g_lon_min + (g_lon_max - g_lon_min) * 0.05,
+                        'text': grid_4digit,
+                    })
+
+    field_labels = []
+    seen_fields = set()
+    for grid in valid_grids.keys():
+        field = grid[:2]
+        if field in seen_fields:
+            continue
+        field_lon_center = (ord(field[0]) - ord('A')) * 20 - 180 + 10
+        field_lat_center = (ord(field[1]) - ord('A')) * 10 - 90 + 5
+        if lon_min <= field_lon_center <= lon_max and lat_min <= field_lat_center <= lat_max:
+            seen_fields.add(field)
+            field_labels.append({'lat': field_lat_center, 'lon': field_lon_center, 'text': field})
+
+    title = f'{callsign} - {band} Band - Maidenhead Grid Squares\n{region_name.replace("_", " ").title()}'
+    if location:
+        title = f'{callsign} - {band} Band - Maidenhead Grid Squares\nFrom {location} — {region_name.replace("_", " ").title()}'
+
+    data = {
+        'title': title,
+        'bounds': [[lat_min, lon_min], [lat_max, lon_max]],
+        'osm': {'opacity': osm_opacity} if (osm_basemap and band_is_osm_eligible(band)) else None,
+        'background': _background_geojson(lon_min, lon_max, lat_min, lat_max),
+        'gridOutlines': grid_outlines,
+        'rectangles': rectangles,
+        'fieldLabels': field_labels,
+        'cornerLabels': corner_labels,
+        'legend': {'min': 1, 'max': max_count},
+    }
+
+    if not output_file:
+        if location:
+            output_file = f"{callsign}_{band}_{location}_{region_name}_maidenhead_map.html"
+        else:
+            output_file = f"{callsign}_{band}_{region_name}_maidenhead_map.html"
+
+    _write_leaflet_html(data, output_file, f"{callsign} - {band} - {region_name}")
+    print(f"Interactive map saved as {output_file}")
+    print(f"{band}: {len(valid_grids)} unique grid squares, {sum(valid_grids.values())} contacts (HTML)")
+
 def main():
     """Main entry point for console script"""
     import sys
@@ -893,6 +1384,13 @@ def main():
                             'time and fails quietly (map still generates) if the tiles can\'t be fetched.')
     parser.add_argument('--osm-opacity', type=float, default=0.3, metavar='0.0-1.0',
                        help='Opacity of the --osm-basemap underlay (default: 0.3, i.e. 30%%).')
+    parser.add_argument('--html', action='store_true',
+                       help='Also generate an interactive HTML version of every map produced in this '
+                            'run (density maps, and path maps when --paths is used), suitable for '
+                            'embedding on a website. Grid squares / worked-station points become '
+                            'hoverable (desktop) or tappable (mobile) with a popup showing that '
+                            'contact\'s callsign, date, six-character grid, and other QSO details. '
+                            'Looks the same as the PNG output, with or without --osm-basemap.')
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -907,10 +1405,10 @@ def main():
 
     # Determine file format based on extension
     if filename.lower().endswith('.csv'):
-        grids_by_band, callsign, detected_home_grid, contacts_by_band = parse_csv_grids(filename)
+        grids_by_band, callsign, detected_home_grid, contacts_by_band, qso_records_by_band = parse_csv_grids(filename)
         print(f"Parsed CSV file: {filename}")
     elif filename.lower().endswith(('.cbr', '.log')):
-        grids_by_band, callsign, detected_home_grid, contacts_by_band = parse_cabrillo_grids(filename)
+        grids_by_band, callsign, detected_home_grid, contacts_by_band, qso_records_by_band = parse_cabrillo_grids(filename)
         print(f"Parsed Cabrillo file: {filename}")
     else:
         print("Unsupported file format. Use .csv, .cbr, or .log files.")
@@ -919,6 +1417,16 @@ def main():
     if not grids_by_band:
         print("No Maidenhead grid squares found in file")
         return
+
+    def records_for_location(band, loc):
+        """This band's QSO detail records, restricted to one operating
+        location using the same (qso_home_grid or detected_home_grid) rule
+        used to group contacts_by_band. loc=None means "no restriction"
+        (used when --home-grid merges every location into a single map)."""
+        records = qso_records_by_band.get(band, [])
+        if loc is None:
+            return records
+        return [r for r in records if (r.get('home_grid') or detected_home_grid) == loc]
 
     # A manual --home-grid always wins, and forces single-location treatment
     # even if the log actually has multiple operating locations.
@@ -949,6 +1457,9 @@ def main():
             # location with --home-grid: one map for the whole band, as before.
             create_grid_map(grids, callsign, band, args.continents,
                              osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+            if args.html:
+                create_grid_map_html(grids, records_for_location(band, None), callsign, band,
+                                      args.continents, osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
                 home_grid = override_home_grid or detected_home_grid
                 if home_grid and detected_home_grid and not override_home_grid:
@@ -959,6 +1470,10 @@ def main():
                 elif contacts:
                     create_path_map(home_grid, [(c, g) for c, g, _ in contacts], callsign, band,
                                      osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+                    if args.html:
+                        create_path_map_html(home_grid, [(c, g) for c, g, _ in contacts],
+                                              records_for_location(band, None), callsign, band,
+                                              osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
                 else:
                     print(f"Skipping --paths map for {band}: no worked-station contacts were parsed")
             continue
@@ -975,14 +1490,21 @@ def main():
             # un-suffixed output rather than adding a needless location tag.
             create_grid_map(grids, callsign, band, args.continents,
                              osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+            home_grid = next(iter(location_groups), None)
+            if args.html:
+                create_grid_map_html(grids, records_for_location(band, home_grid), callsign, band,
+                                      args.continents, osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
-                home_grid = next(iter(location_groups), None)
                 if not home_grid:
                     print(f"Skipping --paths map for {band}: no home grid available. "
                           "Pass --home-grid GRIDSQUARE or use a log that reports your own grid per QSO.")
                 else:
                     create_path_map(home_grid, location_groups[home_grid], callsign, band,
                                      osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+                    if args.html:
+                        create_path_map_html(home_grid, location_groups[home_grid],
+                                              records_for_location(band, home_grid), callsign, band,
+                                              osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             continue
 
         # Multiple operating locations for this band: one graphic per location.
@@ -996,9 +1518,16 @@ def main():
             loc_grids = [g for _, g in loc_contacts]
             create_grid_map(loc_grids, callsign, band, args.continents, location=loc,
                              osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+            if args.html:
+                create_grid_map_html(loc_grids, records_for_location(band, loc), callsign, band,
+                                      args.continents, location=loc,
+                                      osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
             if args.paths:
                 create_path_map(loc, loc_contacts, callsign, band,
                                  osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
+                if args.html:
+                    create_path_map_html(loc, loc_contacts, records_for_location(band, loc), callsign, band,
+                                          osm_basemap=args.osm_basemap, osm_opacity=args.osm_opacity)
 
 if __name__ == "__main__":
     main()

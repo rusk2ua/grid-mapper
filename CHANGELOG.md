@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-23
+
+### Added
+- `--html` CLI option: generates an interactive HTML version of every map
+  produced in a run (contact-density maps, and path maps when `--paths` is
+  used), suitable for embedding on a website. Grid squares (density map) or
+  worked-station points (path map) become hoverable (desktop) or tappable
+  (mobile) with a popup showing the callsign in larger type, the contact
+  date, the six-character grid square, and other available QSO details
+  (mode, frequency, and — for Cabrillo logs — any leftover exchange fields).
+- Multiple contacts sharing a grid square or point are all listed in that
+  popup; a repeat contact with the *same* station collapses to just the most
+  recent one, annotated with a `(×N)` count.
+- `parse_cabrillo_grids()` and `parse_csv_grids()` now also return
+  `qso_records_by_band`, a per-band list of QSO detail dicts (call, grid,
+  home grid, date, time, freq, mode, and any leftover exchange tokens) used
+  to build the `--html` popups, in addition to their existing return values.
+- `create_grid_map_html()` and `create_path_map_html()`: HTML counterparts
+  to `create_grid_map()`/`create_path_map()`, built on
+  [Leaflet](https://leafletjs.com/) (loaded from a CDN). Visually match the
+  PNG output — same grid-square colors, field/corner labels, home star,
+  contact lines and labels — including the `--osm-basemap`/`--osm-opacity`
+  underlay at the same opacity when requested; the visitor's browser fetches
+  the actual OSM tiles at viewing time rather than at generation time.
+- Background coastlines/borders/land/ocean/lakes for the HTML output are
+  embedded per-file as GeoJSON, extracted and clipped from the same Natural
+  Earth data cartopy already downloads for the PNG maps, so each `.html`
+  file stays self-contained and reasonably sized (typically tens of KB).
+- Added `shapely` to `requirements.txt` (used directly now for the above;
+  previously only a transitive dependency of cartopy).
+
 ## [1.4.1] - 2026-08-20
 
 ### Fixed

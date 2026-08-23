@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K5TR - 10G - central_north_america</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  #titlebar { background:#1a1a1a; color:#fff; padding:10px 16px; font-size:15px; font-weight:700;
+              text-align:center; white-space:pre-line; line-height:1.4; }
+  #map-wrap { position:relative; height: calc(100% - 56px); min-height:300px; }
+  #map { position:absolute; top:0; bottom:0; left:0; right:0; background:#eef3f7; }
+  .field-label { color:#1a3fa0; font-weight:700; font-size:13px;
+                 text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; pointer-events:none; }
+  .corner-label { color:#000; font-weight:700; font-size:10px;
+                  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; pointer-events:none; }
+  .home-star { font-size:26px; line-height:26px; color:gold;
+               text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
+  .station-label { font-weight:700; font-size:11px; background:rgba(255,255,255,0.85);
+                    border:none; box-shadow:none; white-space:pre-line; }
+  .qso-popup { min-width:150px; }
+  .qso-entry { margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #eee; }
+  .qso-entry:last-child { border-bottom:none; margin-bottom:0; padding-bottom:0; }
+  .qso-call { font-size:17px; font-weight:700; margin-bottom:2px; }
+  .qso-date, .qso-grid, .qso-detail { font-size:12px; color:#333; }
+  .qso-extra { font-size:11px; color:#777; font-style:italic; margin-top:2px; }
+  #legend { position:absolute; bottom:20px; right:10px; background:rgba(255,255,255,0.92);
+            padding:8px 10px; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,0.3);
+            font-size:12px; z-index:1000; display:none; }
+  #legend .bar { width:16px; height:100px; background: linear-gradient(to top, #fff5f0, #a50f15);
+                 border:1px solid #999; float:left; margin-right:6px; }
+  #legend .labels { display:flex; flex-direction:column; justify-content:space-between; height:100px; }
+</style>
+</head>
+<body>
+<div id="titlebar">K5TR - 10G Band - Maidenhead Grid Squares<br>Central North America</div>
+<div id="map-wrap"><div id="map"></div><div id="legend"></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const DATA = {"title": "K5TR - 10G Band - Maidenhead Grid Squares\nCentral North America", "bounds": [[28.291666666666668, -102.41666666666667], [35.291666666666664, -93.33333333333334]], "osm": null, "background": {"land": [{"type": "Polygon", "coordinates": [[[-96.519336, 28.333447], [-96.453125, 28.340576], [-96.403564, 28.381592], [-96.41333, 28.337793], [-96.51014435912357, 28.291666666666668], [-96.58469025020881, 28.291666666666668], [-96.519336, 28.333447]]]}, {"type": "Polygon", "coordinates": [[[-95.089648, 29.136328], [-94.87168, 29.290137], [-94.825977, 29.341309], [-94.767627, 29.339062], [-94.864941, 29.252881], [-95.039697, 29.145898], [-95.089648, 29.136328]]]}, {"type": "Polygon", "coordinates": [[[-93.33333333333334, 29.783288779331393], [-93.694824, 29.769922], [-93.826465, 29.725146], [-93.865723, 29.755615], [-93.883887, 29.81001], [-93.808789, 29.85083], [-93.769043, 29.952295], [-93.793994, 29.977246], [-93.841455, 29.979736], [-93.946289, 29.81499], [-93.886377, 29.722656], [-93.890479, 29.689355], [-94.099658, 29.67041], [-94.574463, 29.484521], [-94.759619, 29.384277], [-94.750146, 29.418018], [-94.52627, 29.547949], [-94.605322, 29.567822], [-94.732617, 29.535352], [-94.778271, 29.547852], [-94.724365, 29.655273], [-94.741943, 29.75], [-94.832324, 29.752588], [-94.889893, 29.676953], [-94.929883, 29.680176], [-94.982275, 29.712598], [-95.022852, 29.702344], [-94.992822, 29.530957], [-94.888281, 29.370557], [-95.139062, 29.167822], [-95.152148, 29.079248], [-95.273486, 28.963867], [-95.853418, 28.640332], [-96.02041, 28.586816], [-96.234521, 28.488965], [-96.011035, 28.631934], [-96.115039, 28.622217], [-96.373437, 28.657031], [-96.374121, 28.631104], [-96.44873, 28.594482], [-96.526025, 28.648291], [-96.575684, 28.715723], [-96.608496, 28.723291], [-96.640039, 28.708789], [-96.524658, 28.488721], [-96.421094, 28.457324], [-96.561719, 28.367139], [-96.676367, 28.341309], [-96.773535, 28.421631], [-96.79814835014325, 28.291666666666668], [-102.41666666666667, 28.291666666666668], [-102.41666666666667, 35.291666666666664], [-93.33333333333334, 35.291666666666664], [-93.33333333333334, 29.783288779331393]]]}], "ocean": [{"type": "Polygon", "coordinates": [[[-96.79814835014325, 28.291666666666668], [-96.773535, 28.421631], [-96.676367, 28.341309], [-96.561719, 28.367139], [-96.421094, 28.457324], [-96.524658, 28.488721], [-96.640039, 28.708789], [-96.608496, 28.723291], [-96.575684, 28.715723], [-96.526025, 28.648291], [-96.44873, 28.594482], [-96.374121, 28.631104], [-96.373438, 28.657031], [-96.115039, 28.622217], [-96.011035, 28.631934], [-96.234521, 28.488965], [-96.02041, 28.586816], [-95.853418, 28.640332], [-95.273486, 28.963867], [-95.152148, 29.079248], [-95.139063, 29.167822], [-94.888281, 29.370557], [-94.992822, 29.530957], [-95.022852, 29.702344], [-94.982275, 29.712598], [-94.929883, 29.680176], [-94.889893, 29.676953], [-94.832324, 29.752588], [-94.741943, 29.75], [-94.724365, 29.655273], [-94.778271, 29.547852], [-94.732617, 29.535352], [-94.605322, 29.567822], [-94.52627, 29.547949], [-94.750146, 29.418018], [-94.759619, 29.384277], [-94.574463, 29.484521], [-94.099658, 29.67041], [-93.890479, 29.689355], [-93.886377, 29.722656], [-93.946289, 29.81499], [-93.841455, 29.979736], [-93.793994, 29.977246], [-93.769043, 29.952295], [-93.808789, 29.85083], [-93.883887, 29.81001], [-93.865723, 29.755615], [-93.826465, 29.725146], [-93.694824, 29.769922], [-93.33333333333334, 29.783289255520515], [-93.33333333333334, 28.291666666666668], [-96.51014435912357, 28.291666666666668], [-96.41333, 28.337793], [-96.403564, 28.381592], [-96.453125, 28.340576], [-96.519336, 28.333447], [-96.58469088007466, 28.291666666666668], [-96.79814835014325, 28.291666666666668]], [[-94.767627, 29.339063], [-94.825977, 29.341309], [-94.87168, 29.290137], [-95.089648, 29.136328], [-95.039697, 29.145898], [-94.864941, 29.252881], [-94.767627, 29.339063]]]}], "coastline": [{"type": "MultiLineString", "coordinates": [[[-96.519336, 28.333447], [-96.58469025020881, 28.291666666666668]], [[-96.51014435912357, 28.291666666666668], [-96.41333, 28.337793], [-96.403564, 28.381592], [-96.453125, 28.340576], [-96.519336, 28.333447]]]}, {"type": "LineString", "coordinates": [[-95.089648, 29.136328], [-95.039697, 29.145898], [-94.864941, 29.252881], [-94.767627, 29.339062], [-94.825977, 29.341309], [-94.87168, 29.290137], [-95.089648, 29.136328]]}, {"type": "LineString", "coordinates": [[-96.79814835014325, 28.291666666666668], [-96.773535, 28.421631], [-96.676367, 28.341309], [-96.561719, 28.367139], [-96.421094, 28.457324], [-96.524658, 28.488721], [-96.640039, 28.708789], [-96.608496, 28.723291], [-96.575684, 28.715723], [-96.526025, 28.648291], [-96.44873, 28.594482], [-96.374121, 28.631104], [-96.373437, 28.657031], [-96.115039, 28.622217], [-96.011035, 28.631934], [-96.234521, 28.488965], [-96.02041, 28.586816], [-95.853418, 28.640332], [-95.273486, 28.963867], [-95.152148, 29.079248], [-95.139062, 29.167822], [-94.888281, 29.370557], [-94.992822, 29.530957], [-95.022852, 29.702344], [-94.982275, 29.712598], [-94.929883, 29.680176], [-94.889893, 29.676953], [-94.832324, 29.752588], [-94.741943, 29.75], [-94.724365, 29.655273], [-94.778271, 29.547852], [-94.732617, 29.535352], [-94.605322, 29.567822], [-94.52627, 29.547949], [-94.750146, 29.418018], [-94.759619, 29.384277], [-94.574463, 29.484521], [-94.099658, 29.67041], [-93.890479, 29.689355], [-93.886377, 29.722656], [-93.946289, 29.81499], [-93.841455, 29.979736], [-93.793994, 29.977246], [-93.769043, 29.952295], [-93.808789, 29.85083], [-93.883887, 29.81001], [-93.865723, 29.755615], [-93.826465, 29.725146], [-93.694824, 29.769922], [-93.33333333333334, 29.783288779331393]]}], "borders": [{"type": "LineString", "coordinates": [[-102.41666666666667, 29.793796037340808], [-102.385657, 29.806656], [-102.343076, 29.864973], [-102.26892, 29.871174], [-102.163087, 29.82526], [-101.990901, 29.795701], [-101.752337, 29.782472], [-101.611596, 29.786968], [-101.54638, 29.808078], [-101.544623, 29.783531], [-101.440392, 29.776839], [-101.380344, 29.742552], [-101.303527, 29.634083], [-101.038633, 29.460295], [-101.016335, 29.400661], [-100.754594, 29.182508], [-100.658631, 29.068536], [-100.636307, 28.972805], [-100.549697, 28.821342], [-100.331726, 28.50255], [-100.348159, 28.486427], [-100.336273, 28.428136], [-100.2643864201113, 28.291666666666668]]}], "lakes": [{"type": "Polygon", "coordinates": [[[-100.920117, 29.495068], [-101.099756, 29.45835], [-101.232959, 29.502539], [-101.272021, 29.4979], [-101.286621, 29.505957], [-101.260742, 29.562451], [-101.301953, 29.583984], [-101.310059, 29.622021], [-101.275146, 29.647559], [-101.072119, 29.510059], [-101.004443, 29.548047], [-100.992578, 29.535156], [-100.950684, 29.6104], [-100.951318, 29.529004], [-100.920117, 29.495068]]]}]}, "gridOutlines": [[29, -102, 30, -100], [29, -100, 30, -98], [29, -98, 30, -96], [29, -96, 30, -94], [29, -94, 30, -92], [30, -102, 31, -100], [30, -100, 31, -98], [30, -98, 31, -96], [30, -96, 31, -94], [30, -94, 31, -92], [31, -102, 32, -100], [31, -100, 32, -98], [31, -98, 32, -96], [31, -96, 32, -94], [31, -94, 32, -92], [32, -102, 33, -100], [32, -100, 33, -98], [32, -98, 33, -96], [32, -96, 33, -94], [32, -94, 33, -92], [33, -102, 34, -100], [33, -100, 34, -98], [33, -98, 34, -96], [33, -96, 34, -94], [33, -94, 34, -92], [34, -102, 35, -100], [34, -100, 35, -98], [34, -98, 35, -96], [34, -96, 35, -94], [34, -94, 35, -92], [35, -102, 36, -100], [35, -100, 36, -98], [35, -98, 36, -96], [35, -96, 36, -94], [35, -94, 36, -92]], "rectangles": [{"bounds": [[33.083333333333336, -96.66666666666667], [33.125, -96.58333333333334]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">W5LUA</div><div class=\"qso-date\">2026-08-16 12:55Z</div><div class=\"qso-grid\">EM13QC</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[33.0, -96.5], [33.041666666666664, -96.41666666666667]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">WB5ZDP</div><div class=\"qso-date\">2026-08-16 12:56Z</div><div class=\"qso-grid\">EM13SA</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[32.666666666666664, -99.41666666666667], [32.70833333333333, -99.33333333333334]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">W5OC/R</div><div class=\"qso-date\">2026-08-16 13:04Z</div><div class=\"qso-grid\">EM02HQ</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[33.166666666666664, -96.5], [33.20833333333333, -96.41666666666667]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">AA5C</div><div class=\"qso-date\">2026-08-16 13:09Z</div><div class=\"qso-grid\">EM13SE</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[30.291666666666668, -98.16666666666667], [30.333333333333336, -98.08333333333334]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">K5DOG</div><div class=\"qso-date\">2026-08-16 13:16Z</div><div class=\"qso-grid\">EM00WH</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[31.083333333333332, -98.33333333333333], [31.125, -98.25]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">KM5PO</div><div class=\"qso-date\">2026-08-16 13:20Z</div><div class=\"qso-grid\">EM01UC</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[33.25, -96.5], [33.291666666666664, -96.41666666666667]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">AA5AM</div><div class=\"qso-date\">2026-08-16 13:59Z</div><div class=\"qso-grid\">EM13SG</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[31.75, -97.83333333333333], [31.791666666666668, -97.75]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">KM5PO</div><div class=\"qso-date\">2026-08-16 14:49Z</div><div class=\"qso-grid\">EM11CS</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[31.875, -97.58333333333333], [31.916666666666668, -97.5]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">KM5PO</div><div class=\"qso-date\">2026-08-16 16:51Z</div><div class=\"qso-grid\">EM11FV</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[31.458333333333332, -97.41666666666667], [31.5, -97.33333333333334]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">KM5PO</div><div class=\"qso-date\">2026-08-16 19:37Z</div><div class=\"qso-grid\">EM11HL</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[32.125, -97.0], [32.166666666666664, -96.91666666666667]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">W5OC/R</div><div class=\"qso-date\">2026-08-16 22:37Z</div><div class=\"qso-grid\">EM12MD</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[31.708333333333332, -98.0], [31.75, -97.91666666666667]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">K5MNZ/R</div><div class=\"qso-date\">2026-08-16 22:43Z</div><div class=\"qso-grid\">EM11AR</div><div class=\"qso-detail\">CW  10</div></div></div>"}, {"bounds": [[30.666666666666668, -96.41666666666667], [30.708333333333336, -96.33333333333334]], "color": "#67000d", "popup": "<div class=\"qso-popup\"><div class=\"qso-entry\"><div class=\"qso-call\">KM5PO/R</div><div class=\"qso-date\">2026-08-16 22:50Z</div><div class=\"qso-grid\">EM10TQ</div><div class=\"qso-detail\">CW  10</div></div></div>"}], "fieldLabels": [], "cornerLabels": [{"lat": 33.05, "lon": -97.9, "text": "EM13"}, {"lat": 32.05, "lon": -99.9, "text": "EM02"}, {"lat": 30.05, "lon": -99.9, "text": "EM00"}, {"lat": 31.05, "lon": -99.9, "text": "EM01"}, {"lat": 31.05, "lon": -97.9, "text": "EM11"}, {"lat": 32.05, "lon": -97.9, "text": "EM12"}, {"lat": 30.05, "lon": -97.9, "text": "EM10"}], "legend": {"min": 1, "max": 1}};
+(function () {
+  var map = L.map('map', { scrollWheelZoom: true });
+  var b = DATA.bounds;
+  map.fitBounds([[b[0][0], b[0][1]], [b[1][0], b[1][1]]]);
+
+  if (DATA.osm) {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      opacity: DATA.osm.opacity, maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+  }
+
+  function addGeoms(geoms, style) {
+    (geoms || []).forEach(function (g) { L.geoJSON(g, { style: style }).addTo(map); });
+  }
+  var bg = DATA.background || {};
+  addGeoms(bg.ocean, { color: '#7fb8d8', weight: 0, fillColor: '#c6e2f0', fillOpacity: 0.35 });
+  addGeoms(bg.land, { color: '#bbb', weight: 0, fillColor: '#e6e6e6', fillOpacity: 0.35 });
+  addGeoms(bg.lakes, { color: '#4a90d9', weight: 0.7, fillOpacity: 0 });
+  addGeoms(bg.coastline, { color: '#333', weight: 1, fillOpacity: 0 });
+  addGeoms(bg.borders, { color: '#666', weight: 0.6, fillOpacity: 0 });
+
+  (DATA.gridOutlines || []).forEach(function (r) {
+    L.rectangle([[r[0], r[1]], [r[2], r[3]]], { color: '#ccc', weight: 0.5, fillOpacity: 0 }).addTo(map);
+  });
+
+  function bindHoverPopup(layer, popupHtml) {
+    layer.bindPopup(popupHtml, { maxWidth: 260 });
+    layer.on('mouseover', function () { this.openPopup(); });
+    layer.on('mouseout', function () { this.closePopup(); });
+  }
+
+  (DATA.rectangles || []).forEach(function (r) {
+    var rect = L.rectangle([[r.bounds[0][0], r.bounds[0][1]], [r.bounds[1][0], r.bounds[1][1]]], {
+      color: '#000', weight: 0.6, fillColor: r.color, fillOpacity: 0.85
+    }).addTo(map);
+    bindHoverPopup(rect, r.popup);
+  });
+
+  (DATA.fieldLabels || []).forEach(function (l) {
+    L.marker([l.lat, l.lon], {
+      icon: L.divIcon({ className: 'field-label', html: l.text, iconSize: [30, 18] }),
+      interactive: false
+    }).addTo(map);
+  });
+  (DATA.cornerLabels || []).forEach(function (l) {
+    L.marker([l.lat, l.lon], {
+      icon: L.divIcon({ className: 'corner-label', html: l.text, iconSize: [40, 14] }),
+      interactive: false
+    }).addTo(map);
+  });
+
+  if (DATA.legend) {
+    var el = document.getElementById('legend');
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">Contacts</div>' +
+      '<div class="bar"></div><div class="labels"><span>' + DATA.legend.max +
+      '</span><span>' + DATA.legend.min + '</span></div><div style="clear:both;"></div>';
+  }
+
+  (DATA.lines || []).forEach(function (ln) {
+    L.polyline(ln, { color: 'crimson', weight: 1.5, opacity: 0.85 }).addTo(map);
+  });
+
+  (DATA.markers || []).forEach(function (m) {
+    var dot = L.circleMarker([m.lat, m.lon], {
+      radius: 6, color: '#000', weight: 0.8, fillColor: 'crimson', fillOpacity: 0.9
+    }).addTo(map);
+    bindHoverPopup(dot, m.popup);
+    dot.bindTooltip(m.label, { permanent: true, direction: 'right', offset: [6, 0], className: 'station-label' });
+  });
+
+  if (DATA.home) {
+    var star = L.marker([DATA.home.lat, DATA.home.lon], {
+      icon: L.divIcon({ className: '', html: '<div class="home-star">★</div>', iconSize: [30, 30], iconAnchor: [15, 15] })
+    }).addTo(map);
+    star.bindTooltip(DATA.home.label, { permanent: true, direction: 'top', className: 'station-label' });
+  }
+})();
+</script>
+</body>
+</html>
