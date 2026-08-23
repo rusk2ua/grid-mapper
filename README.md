@@ -380,7 +380,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+- Designed for Amateur Radio contest analysis and fixed-station grids-worked mapping by band
+- Supports worldwide amateur radio activity mapping
 - Uses Natural Earth data for geographic features
 - Built with matplotlib and cartopy for mapping
-- Designed for amateur radio VHF/UHF contest analysis
-- Supports worldwide amateur radio activity mapping
+- Thanks to George, K5TR, for the distance and direction vector and Open Street Map background suggestion for 10 GHz and up logs.
