@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-10-31
+
+### Fixed
+- `--osm-basemap` street underlay now applies to **every** band at 902 MHz and up.
+  It previously worked only for bands listed in an internal table (or labels written
+  with a spelled-out unit such as `3.4GHz`), so Cabrillo labels like `1.2G`, `2.3G`,
+  `3.4G`, `5.7G`, `134G`, `241G` and `300G` silently got no underlay. Band labels are
+  now parsed generically: a number with `GHz`/`MHz`/`kHz` or a bare `G` (Cabrillo's GHz
+  notation), a bare number (MHz), or a wavelength such as `23cm`/`4mm`.
+- The light-gray 1°x2° grid-square outlines were missing on the same bands and now use
+  the same band parsing (6 m and up).
+- The 2 mm band started at 142 GHz; it now starts at 134 GHz (the real 2 mm allocation,
+  and the `134G` Cabrillo code). Added `134G`, `142G` (legacy), `241G` and `300G` to the
+  band table and a 275-1000 GHz frequency range, labelled `300G`.
+
+### Added
+- `band_min_freq_mhz()` and `band_has_grid_outlines()` helpers, and `tests/test_bands.py`.
+
 ## [1.5.0] - 2026-08-23
 
 ### Added
