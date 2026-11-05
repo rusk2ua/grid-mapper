@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-11-05
+
+### Fixed
+- Saved `--html` maps and `--animate` movies opened from a file with
+  `--osm-basemap` showed OpenStreetMap's "Access blocked" tiles: OpenStreetMap's
+  tile servers refuse requests without a `Referer`, which a page opened from a file
+  never sends. Such pages now leave the street underlay out and note it in the
+  attribution; opened from a website, they show it as before.
+
+### Changed
+- The `--animate` movie inlines Leaflet 1.9.4 from the new `vendor/leaflet/`
+  (unmodified npm `dist/` files and the BSD-2-Clause license), so a saved copy plays
+  without reaching a CDN, even offline. About 160 KB more per movie. Falls back to
+  the unpkg CDN when `vendor/` isn't present (e.g. a pip install).
+
 ## [1.6.0] - 2026-11-05
 
 ### Added
