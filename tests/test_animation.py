@@ -139,6 +139,9 @@ def test_cli_animate_only(tmp_path, monkeypatch):
 
 def test_movie_bundles_leaflet(tmp_path, monkeypatch):
     """A saved movie must play without reaching a CDN."""
+    for name in ('leaflet.js', 'leaflet.css'):
+        assert os.path.isfile(os.path.join(mm._LEAFLET_DIR, name)), \
+            f"vendor/leaflet/{name} is missing: the movie would fall back to the CDN"
     monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
     out = tmp_path / 'movie.html'
     mm.create_animation_html(LOG, 'K2UA', output_file=str(out))
