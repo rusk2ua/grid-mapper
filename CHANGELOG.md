@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-11-05
+
+### Added
+- `--animate`: a self-contained HTML "movie" of the whole log
+  (`CALLSIGN_contest_animation.html`). The map follows the station from one
+  operating location (the grid in the sent exchange) to the next, and draws a line
+  to each worked station as the contact was made. Lines from earlier locations stay,
+  dimmed, with a dotted trail between locations.
+- All operating days play as one timeline; for the ARRL 10 GHz and Up contest both
+  weekends become one four-day period. Breaks of more than 45 minutes at one location,
+  relocations and the gap between weekends are fast-forwarded, with a banner and a
+  card at the start of each day. Days follow the station's local (solar) date so an
+  evening session past 0000Z stays on its day; times are shown in UTC with UTC dates.
+- Fixed per-band styling: the eight 10 GHz and Up bands each have a color from a
+  dark-surface palette that passes adjacent-pair color-vision checks, plus a distinct
+  dash pattern and marker shape so color is never the only cue. Other bands take any
+  unused styles in frequency order.
+- Playback controls: play/pause (space bar), restart, 0.5×/1×/2× speed, a scrubbable
+  timeline with day ticks, three fixed zoom levels (Region/Area/Local; wheel, pinch
+  and double-click zoom are disabled), band toggles with live counts, and a table of
+  operating locations. Works on phones; honors reduced-motion settings.
+- `--animate-only` (only the movie) and `--animate-seconds` (movie length at 1×;
+  default about 2 minutes for a busy multi-location log, at least 40 s).
+- Background from Natural Earth 10m land, lakes, coastline, country and
+  state/province borders (falls back to the coarser layers if unavailable).
+- `build_animation_data()` and `create_animation_html()` for use as a library, and
+  `tests/test_animation.py`.
+
+### Changed
+- `_geojson_geoms_for_bbox()` takes an optional `tolerance`.
+
 ## [1.5.1] - 2026-10-31
 
 ### Fixed
