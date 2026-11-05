@@ -135,3 +135,31 @@ def test_cli_animate_only(tmp_path, monkeypatch):
                                 (tmp_path / 'K1ABC_contest_animation.html').read_text(encoding='utf-8')).group(1))
     assert data['duration'] == pytest.approx(30, abs=0.05)
     assert [s['grid'] for s in data['stops']] == ['FN32KP', 'FN33AA']
+
+
+def test_movie_bundles_leaflet(tmp_path, monkeypatch):
+    """A saved movie must play without reaching a CDN."""
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    out = tmp_path / 'movie.html'
+    mm.create_animation_html(LOG, 'K2UA', output_file=str(out))
+    page = out.read_text(encoding='utf-8')
+    assert 'unpkg.com' not in page
+    assert 'Leaflet 1.9.4' in page and '.leaflet-container' in page
+    assert page.count('</script>') == 2           # the bundled library's and ours
+
+
+def test_movie_falls_back_to_the_cdn_without_the_bundle(tmp_path, monkeypatch):
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    monkeypatch.setattr(mm, '_LEAFLET_DIR', str(tmp_path / 'missing'))
+    out = tmp_path / 'movie.html'
+    mm.create_animation_html(LOG, 'K2UA', output_file=str(out))
+    page = out.read_text(encoding='utf-8')
+    assert 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' in page
+    assert 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' in page
+
+
+def test_street_tiles_are_skipped_for_saved_files():
+    # OpenStreetMap answers tile requests without a Referer (a page opened from
+    # a file) with "Access blocked" images, so both pages skip them there.
+    for template in (mm._ANIMATION_PAGE_TEMPLATE, mm._LEAFLET_PAGE_TEMPLATE):
+        assert "location.protocol" in template and "'file:'" in template

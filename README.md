@@ -181,7 +181,10 @@ interactive map) — no server or build step needed, just open the file in a
 browser or upload it to your website alongside (or instead of) the PNG. When
 `--osm-basemap` is also used, the visitor's own browser fetches the OpenStreetMap
 tiles directly, so — like the PNG version — this needs internet access, but
-now at *viewing* time rather than at generation time.
+now at *viewing* time rather than at generation time. OpenStreetMap only serves
+tiles to pages opened from a website (it refuses requests without a `Referer`
+header, drawing "Access blocked" instead), so a map opened straight from a saved
+file leaves the street underlay out and says so in its corner.
 
 Output filenames match the PNG naming exactly, just with a `.html` extension:
 `K2UA_10G_EN91KT_northeastern_north_america_grid_paths_map.html`.
@@ -224,9 +227,13 @@ python maidenhead_map.py your_10g_log.cbr --animate-only
   one; set it with `--animate-seconds 90`.
 
 `--animate` adds the movie to the usual maps; `--animate-only` makes just the movie.
-`--osm-basemap` adds street detail under it. Like `--html`, the page loads Leaflet
-from a CDN, so viewing it needs an internet connection; the first run may also
-download Natural Earth's detailed (10m) map data, which is then cached.
+`--osm-basemap` adds street detail under it. The movie carries its own copy of
+Leaflet (from `vendor/leaflet/`), so a saved copy plays anywhere, even offline;
+only the street underlay needs the movie to be opened from a website, for the
+same reason as the `--html` maps. (A pip install of `maidenhead_map.py` alone
+doesn't include `vendor/`, and the movie then loads Leaflet from a CDN instead.)
+The first run may download Natural Earth's detailed (10m) map data, which is
+then cached.
 
 ### Available Continents
 - `north_america` - North America
@@ -338,7 +345,7 @@ operating location) with descriptive filenames:
 - shapely (used to embed background geography in `--html` output)
 - numpy (installed with matplotlib)
 - Internet access at run time if using `--osm-basemap` (to fetch OpenStreetMap tiles)
-- Internet access when *viewing* `--html` output (to load Leaflet from its CDN, and OpenStreetMap tiles if `--osm-basemap` was also used)
+- Internet access when *viewing* `--html` output (to load Leaflet from its CDN, and OpenStreetMap tiles if `--osm-basemap` was also used); the `--animate` movie bundles Leaflet and plays offline
 
 ## Examples
 
@@ -406,6 +413,7 @@ watch your contest unfold location by location, band by band.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.6.1 | 2026-11-05 | The `--animate` movie bundles Leaflet 1.9.4 (`vendor/leaflet/`), so a saved copy plays with no CDN, even offline. Saved `--html` maps and movies no longer show OpenStreetMap's "Access blocked" tiles: when opened from a file (which sends no `Referer`, so OpenStreetMap refuses the tiles) they leave the street underlay out and say so. |
 | 1.6.0 | 2026-11-05 | Added `--animate` (and `--animate-only`, `--animate-seconds`): a self-contained HTML movie of the whole log that follows the station between operating locations, draws in each contact as it was made with a fixed color, dash and marker per band, plays all operating days (both weekends of the 10 GHz and Up contest) as one timeline with long breaks and drives fast-forwarded, and offers 0.5×/1×/2× speed, a scrubbable timeline, three fixed zoom levels, band toggles and a table view. |
 | 1.5.1 | 2026-10-31 | Fixed `--osm-basemap` and grid-square outlines being skipped for many GHz band labels (`1.2G`, `2.3G`, `3.4G`, `5.7G`, `134G`, `241G`, `300G`, ...). Band labels are now parsed generically, so the street underlay applies to every band at 902 MHz and up. The 2 mm band now starts at 134 GHz; added 134G/241G/300G band codes. |
 | 1.5.0 | 2026-08-23 | Added `--html` to generate an interactive, website-ready HTML version of every map produced in a run (density maps and, with `--paths`, path maps). Grid squares / worked-station points become hoverable (desktop) or tappable (mobile) with a popup showing callsign, date, six-character grid, and other QSO details; repeat contacts with the same station collapse to a `(×N)` count. Visually matches the PNG output, including the `--osm-basemap` underlay at the same opacity. Built on Leaflet (loaded from a CDN); background coastlines/borders/land/ocean are embedded per-file from the same Natural Earth data cartopy already uses. Added `shapely` to requirements. |
