@@ -16,6 +16,7 @@ A Python tool that creates color-coded maps of Maidenhead grid squares from amat
 - **Multi-Location Detection**: Rover and multi-op logs that report a different home grid on different QSOs (e.g. a rover moving between stops) are automatically split into a separate graphic per band *and* per operating location, instead of mixing locations together on one map
 - **Whole-Number Contact Scale**: The contact-density color scale only ever shows whole numbers, since there's no such thing as a fractional contact
 - **OpenStreetMap Basemap**: `--osm-basemap` adds a faint (default 30% opacity, adjustable with `--osm-opacity`) OpenStreetMap street-level tile layer underneath every map generated for 902 MHz and higher bands (33cm and up), on top of which all the usual layers still draw normally
+- **Contest Movie**: `--animate` replays the whole log as an animated map that follows you between operating locations and draws in each contact, colored by band, as it was made
 - **Interactive HTML Maps**: `--html` generates a website-ready interactive version of every map produced in the same run — hover (or tap, on mobile) a grid square or worked-station point to see a popup with that contact's callsign, date, six-character grid, and other QSO details
 
 ## Sample Output
@@ -189,6 +190,44 @@ CSV-format logs get best-effort popups using whatever columns are present
 (callsign, grid, and date if available) — Cabrillo logs carry more detail
 (mode, frequency, exchange fields) so their popups are more complete.
 
+### Contest Movie (`--animate`)
+
+`--animate` turns a whole log into one self-contained HTML "movie" of the contest
+(`K2UA_contest_animation.html`). It's made for the ARRL 10 GHz and Up contest, but
+works with any log that has times and grid squares.
+
+```bash
+python maidenhead_map.py your_10g_log.cbr --animate-only
+```
+
+- **Follows the station.** The map is centered on your operating location and glides
+  to the next one each time the grid in your sent exchange changes. A dotted trail and
+  a ring mark every place you operated from.
+- **Contacts appear as they were made.** Each QSO draws a line from your location to
+  the station worked, with that station's call sign flashing briefly. Lines from
+  earlier locations stay on the map, dimmed, so the full picture builds as it plays.
+- **One timeline for the whole contest.** All operating days play back to back; for
+  the 10 GHz and Up contest both weekends become one four-day period. Long breaks,
+  overnights, drives and the weeks between weekends are fast-forwarded with a banner
+  ("2 h 52 min later · EN81WL → EN91KT") and a card at the start of each day.
+  Days follow your local date, so an evening session that runs past 0000Z stays on
+  that day; times are always shown in UTC with their UTC date.
+- **Colors per band.** Every band in the 10 GHz and Up contest has a fixed color
+  (10G blue, 24G orange, 47G aqua, 75G yellow, 123G magenta, 134G green, 241G violet,
+  300G red) plus its own line dash and marker shape, so bands stay distinguishable for
+  color-blind viewers too. Click a band in the legend to hide or show it.
+- **Controls.** Play/pause (or the space bar), restart, 0.5×/1×/2× speed, a timeline
+  you can drag, and three fixed zoom levels (Region, Area, Local). Wheel, pinch and
+  double-click zooming are off, so the camera stays steady. **Table** lists every
+  operating location with its UTC times and contacts per band.
+- **Length.** About two minutes at 1× for a busy multi-location log, less for a small
+  one; set it with `--animate-seconds 90`.
+
+`--animate` adds the movie to the usual maps; `--animate-only` makes just the movie.
+`--osm-basemap` adds street detail under it. Like `--html`, the page loads Leaflet
+from a CDN, so viewing it needs an internet connection; the first run may also
+download Natural Earth's detailed (10m) map data, which is then cached.
+
 ### Available Continents
 - `north_america` - North America
 - `south_america` - South America  
@@ -230,6 +269,9 @@ The script automatically detects common CSV column names:
 | `--osm-basemap` | Add a faint OpenStreetMap tile layer underneath every map generated for 902 MHz and higher bands (see [OpenStreetMap Basemap](#openstreetmap-basemap---osm-basemap)) |
 | `--osm-opacity 0.0-1.0` | Opacity of the `--osm-basemap` underlay (default `0.3`, i.e. 30%); has no effect without `--osm-basemap` |
 | `--html` | Also generate an interactive HTML version of every map produced in this run (see [Interactive HTML Maps](#interactive-html-maps---html)) |
+| `--animate` | Also generate the animated contest movie (see [Contest Movie](#contest-movie---animate)) |
+| `--animate-only` | Generate only the contest movie, without the per-band maps |
+| `--animate-seconds SECONDS` | Length of the movie at 1× (default: about 2 minutes for a busy multi-location log, less for a small one) |
 
 ## Output Files
 
@@ -241,6 +283,7 @@ operating location) with descriptive filenames:
 - `K5TR_10G_EM00UF_central_north_america_grid_paths_map.png` - 10G band path map (with `--paths`)
 - `K2UA_10G_EN91KT_northeastern_north_america_maidenhead_map.png` - 10G band, one of several rover locations
 - `K5TR_10G_EM00UF_central_north_america_grid_paths_map.html` - the same 10G path map, interactive (with `--html`)
+- `K2UA_contest_animation.html` - the whole log as an animated movie (with `--animate`)
 
 ## Supported Bands
 
@@ -352,10 +395,18 @@ any grid square or worked-station point to see who was worked, when, and
 from which six-character grid — a more engaging way to show off local
 VHF/UHF/microwave activity than a static image.
 
+### Example 8: Contest movie
+```bash
+python maidenhead_map.py your_10g_log.cbr --animate-only
+```
+Writes `YOURCALL_contest_animation.html`. Open it in a browser and press Play to
+watch your contest unfold location by location, band by band.
+
 ## Revision History
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.6.0 | 2026-11-05 | Added `--animate` (and `--animate-only`, `--animate-seconds`): a self-contained HTML movie of the whole log that follows the station between operating locations, draws in each contact as it was made with a fixed color, dash and marker per band, plays all operating days (both weekends of the 10 GHz and Up contest) as one timeline with long breaks and drives fast-forwarded, and offers 0.5×/1×/2× speed, a scrubbable timeline, three fixed zoom levels, band toggles and a table view. |
 | 1.5.1 | 2026-10-31 | Fixed `--osm-basemap` and grid-square outlines being skipped for many GHz band labels (`1.2G`, `2.3G`, `3.4G`, `5.7G`, `134G`, `241G`, `300G`, ...). Band labels are now parsed generically, so the street underlay applies to every band at 902 MHz and up. The 2 mm band now starts at 134 GHz; added 134G/241G/300G band codes. |
 | 1.5.0 | 2026-08-23 | Added `--html` to generate an interactive, website-ready HTML version of every map produced in a run (density maps and, with `--paths`, path maps). Grid squares / worked-station points become hoverable (desktop) or tappable (mobile) with a popup showing callsign, date, six-character grid, and other QSO details; repeat contacts with the same station collapse to a `(×N)` count. Visually matches the PNG output, including the `--osm-basemap` underlay at the same opacity. Built on Leaflet (loaded from a CDN); background coastlines/borders/land/ocean are embedded per-file from the same Natural Earth data cartopy already uses. Added `shapely` to requirements. |
 | 1.4.1 | 2026-08-20 | Fixed `--osm-basemap` crashing with `ImportError: ... requires either pykdtree or scipy` on installs without one of those already present; added `scipy` to requirements. |
