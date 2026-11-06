@@ -294,3 +294,13 @@ def test_rover_call_is_file_safe(tmp_path, monkeypatch):
         'K2UA-R_contest_animation.html'
     page = (tmp_path / 'K2UA-R_contest_animation.html').read_text(encoding='utf-8')
     assert 'id="act-line"' in page and 'ARRL June VHF 2026' in page
+
+
+def test_interactive_map_data_cannot_end_its_script_block(tmp_path):
+    out = tmp_path / 'map.html'
+    data = {'title': 'x', 'note': '</script><img src=x onerror=alert(1)> & more'}
+    mm._write_leaflet_html(data, str(out), 'K2UA')
+    page = out.read_text(encoding='utf-8')
+    assert '</script><img' not in page
+    blob = re.search(r"const DATA = (.*?);\n", page).group(1)
+    assert json.loads(blob)['note'] == data['note']
