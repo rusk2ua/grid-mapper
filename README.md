@@ -196,8 +196,9 @@ CSV-format logs get best-effort popups using whatever columns are present
 ### Contest Movie (`--animate`)
 
 `--animate` turns a whole log into one self-contained HTML "movie" of the contest
-(`K2UA_contest_animation.html`). It's made for the ARRL 10 GHz and Up contest, but
-works with any log that has times and grid squares.
+(`K2UA_contest_animation.html`). It's made for the ARRL 10 GHz and Up contest and the
+ARRL January, June and September VHF Contests, especially for rovers, but works with any
+log that has times and grid squares.
 
 ```bash
 python maidenhead_map.py your_10g_log.cbr --animate-only
@@ -215,16 +216,24 @@ python maidenhead_map.py your_10g_log.cbr --animate-only
   ("2 h 52 min later · EN81WL → EN91KT") and a card at the start of each day.
   Days follow your local date, so an evening session that runs past 0000Z stays on
   that day; times are always shown in UTC with their UTC date.
-- **Colors per band.** Every band in the 10 GHz and Up contest has a fixed color
-  (10G blue, 24G orange, 47G aqua, 75G yellow, 123G magenta, 134G green, 241G violet,
-  300G red) plus its own line dash and marker shape, so bands stay distinguishable for
-  color-blind viewers too. Click a band in the legend to hide or show it.
+- **Colors per band.** Every band from 50 MHz up has a fixed style: a color plus its own
+  line dash and marker shape, so bands stay distinguishable for color-blind viewers too
+  (10 GHz is blue, 24 GHz orange, 47 GHz aqua, 78 GHz yellow; a ten-band rover log
+  shares a few colors between far-apart bands, each with a different dash and marker).
+  Click a band in the legend to hide or show it.
+- **Grids activated.** In a rover log, each grid square you operate from is shaded as you
+  reach it, and the panel counts **Grids activated**.
 - **Running score.** For ARRL 10 GHz and Up logs (`CONTEST: ARRL-10-GHZ`), the panel also
   shows **Cumulative Score**, climbing with every contact. It's scored exactly as
   [10ghz-log-analyzer](https://github.com/rusk2ua/10ghz-log-analyzer) does it, so the movie
   ends on the same total as that tool's summary: distance in km rounded up (minimum 1) times
   the band multiplier (10 GHz ×1, 24 ×2, 47 ×3, 75 ×4, 122 GHz and up ×5), plus 100 the first
-  time each call is worked on each band. Other contests don't show a score.
+  time each call is worked on each band. For the ARRL January, June and September VHF
+  Contests (`CONTEST: ARRL-VHF-JAN`, `-JUN`, `-SEP`) it's scored as 10ghz-log-analyzer's
+  `vhf_cabrillo.py` does: QSO points by band (902 MHz and 1.2 GHz 3, 2.3 GHz and up 4,
+  doubled to 4 and 8 in January), times grids worked per band, plus one multiplier per
+  grid activated for a rover. The category comes from the Cabrillo header (or a `/R`
+  call sign means Classic Rover). Other contests don't show a score.
 - **Controls.** Play/pause (or the space bar), restart, 0.5×/1×/2× speed, a timeline
   you can drag, and three fixed zoom levels (Region, Area, Local). Wheel, pinch and
   double-click zooming are off, so the camera stays steady. **Table** lists every
@@ -419,6 +428,7 @@ watch your contest unfold location by location, band by band.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.7.0 | 2026-11-06 | The `--animate` movie scores the ARRL January, June and September VHF Contests, rovers included, and shades each grid a rover activates; every band from 50 MHz up has a fixed style; rover call signs (`K2UA/R`) no longer break output file names. |
 | 1.6.2 | 2026-11-06 | The `--animate` movie shows a running **Cumulative Score** for ARRL 10 GHz and Up logs, computed exactly as 10ghz-log-analyzer scores them, so it ends on the same total as that tool's summary. |
 | 1.6.1 | 2026-11-05 | The `--animate` movie bundles Leaflet 1.9.4 (`vendor/leaflet/`), so a saved copy plays with no CDN, even offline. Saved `--html` maps and movies no longer show OpenStreetMap's "Access blocked" tiles: when opened from a file (which sends no `Referer`, so OpenStreetMap refuses the tiles) they leave the street underlay out and say so. |
 | 1.6.0 | 2026-11-05 | Added `--animate` (and `--animate-only`, `--animate-seconds`): a self-contained HTML movie of the whole log that follows the station between operating locations, draws in each contact as it was made with a fixed color, dash and marker per band, plays all operating days (both weekends of the 10 GHz and Up contest) as one timeline with long breaks and drives fast-forwarded, and offers 0.5×/1×/2× speed, a scrubbable timeline, three fixed zoom levels, band toggles and a table view. |
