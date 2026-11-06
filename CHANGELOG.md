@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-11-06
+
+### Added
+- The `--animate` movie's info panel shows a running **Cumulative Score** for ARRL
+  10 GHz and Up logs (`CONTEST: ARRL-10-GHZ`), updating with every contact. Scoring
+  mirrors 10ghz-log-analyzer's `calculate_score` exactly (its grid convention, a
+  6371 km Earth radius, distance rounded up with a 1 km minimum, rules 5.2 band
+  multipliers, and 100 per unique call per band), so the movie ends on the same total
+  as that tool's summary. Logs from other contests show no score.
+- `build_animation_data(..., contest=...)`: events carry the running score (`sc`) and
+  the data names the rules (`scoring`).
+
 ## [1.6.1] - 2026-11-05
 
 ### Fixed

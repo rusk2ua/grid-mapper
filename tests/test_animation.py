@@ -166,3 +166,46 @@ def test_street_tiles_are_skipped_for_saved_files():
     # a file) with "Access blocked" images, so both pages skip them there.
     for template in (mm._ANIMATION_PAGE_TEMPLATE, mm._LEAFLET_PAGE_TEMPLATE):
         assert "location.protocol" in template and "'file:'" in template
+
+
+# ------------------------------------------------------------------ running score
+
+@pytest.mark.parametrize("home, grid, points", [
+    # Reference values from 10ghz-log-analyzer's calculate_distance, rounded up.
+    ('FN32KP', 'FN31PR', 108), ('FN32KP', 'FN31', 194), ('EN81UK', 'EN82OA', 77), ('FN23BF', 'FN12EU', 149),
+])
+def test_points_match_the_analyzer(home, grid, points):
+    assert mm._arrl10_points(home, grid, '10G') == points
+
+
+@pytest.mark.parametrize("band, multiplier", [
+    ('10G', 1), ('24G', 2), ('47G', 3), ('75G', 4), ('123G', 5), ('134G', 5), ('241G', 5), ('300G', 5),
+    ('5.7G', 1),
+])
+def test_band_multipliers_follow_the_rules(band, multiplier):
+    assert mm._arrl10_multiplier(band) == multiplier
+
+
+def test_running_score_counts_each_call_once_per_band():
+    log = records(rec('10G', '2026-08-15', '1100', 'W1AAA', 'FN31PR', 'FN32KP'),
+                  rec('10G', '2026-08-15', '1130', 'W1AAA', 'FN31PR', 'FN32KP'),    # same call, same band
+                  rec('24G', '2026-08-15', '1135', 'W1AAA', 'FN31PR', 'FN32KP'))    # new band: bonus again
+    d = mm.build_animation_data(log, contest='ARRL-10-GHZ')
+    assert [e['sc'] for e in d['events']] == [108 + 100, 108 + 100 + 108, 108 + 100 + 108 + 216 + 100]
+    assert d['scoring'] == {'rules': 'ARRL 10 GHz and Up', 'total': 632}
+
+
+def test_no_score_for_contests_without_known_rules():
+    for contest in (None, 'ARRL-VHF-SEP'):
+        d = mm.build_animation_data(LOG, contest=contest)
+        assert d['scoring'] is None and 'sc' not in d['events'][0]
+
+
+def test_score_line_is_on_the_page(tmp_path, monkeypatch):
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    out = tmp_path / 'movie.html'
+    mm.create_animation_html(LOG, 'K2UA', output_file=str(out), contest='ARRL-10-GHZ')
+    page = out.read_text(encoding='utf-8')
+    assert 'Cumulative Score: <b id="score">0</b>' in page
+    data = json.loads(re.search(r'const DATA = (.*?);\n', page).group(1))
+    assert data['scoring']['total'] == data['events'][-1]['sc'] > 0

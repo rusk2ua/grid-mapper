@@ -219,6 +219,12 @@ python maidenhead_map.py your_10g_log.cbr --animate-only
   (10G blue, 24G orange, 47G aqua, 75G yellow, 123G magenta, 134G green, 241G violet,
   300G red) plus its own line dash and marker shape, so bands stay distinguishable for
   color-blind viewers too. Click a band in the legend to hide or show it.
+- **Running score.** For ARRL 10 GHz and Up logs (`CONTEST: ARRL-10-GHZ`), the panel also
+  shows **Cumulative Score**, climbing with every contact. It's scored exactly as
+  [10ghz-log-analyzer](https://github.com/rusk2ua/10ghz-log-analyzer) does it, so the movie
+  ends on the same total as that tool's summary: distance in km rounded up (minimum 1) times
+  the band multiplier (10 GHz ×1, 24 ×2, 47 ×3, 75 ×4, 122 GHz and up ×5), plus 100 the first
+  time each call is worked on each band. Other contests don't show a score.
 - **Controls.** Play/pause (or the space bar), restart, 0.5×/1×/2× speed, a timeline
   you can drag, and three fixed zoom levels (Region, Area, Local). Wheel, pinch and
   double-click zooming are off, so the camera stays steady. **Table** lists every
@@ -413,6 +419,7 @@ watch your contest unfold location by location, band by band.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.6.2 | 2026-11-06 | The `--animate` movie shows a running **Cumulative Score** for ARRL 10 GHz and Up logs, computed exactly as 10ghz-log-analyzer scores them, so it ends on the same total as that tool's summary. |
 | 1.6.1 | 2026-11-05 | The `--animate` movie bundles Leaflet 1.9.4 (`vendor/leaflet/`), so a saved copy plays with no CDN, even offline. Saved `--html` maps and movies no longer show OpenStreetMap's "Access blocked" tiles: when opened from a file (which sends no `Referer`, so OpenStreetMap refuses the tiles) they leave the street underlay out and say so. |
 | 1.6.0 | 2026-11-05 | Added `--animate` (and `--animate-only`, `--animate-seconds`): a self-contained HTML movie of the whole log that follows the station between operating locations, draws in each contact as it was made with a fixed color, dash and marker per band, plays all operating days (both weekends of the 10 GHz and Up contest) as one timeline with long breaks and drives fast-forwarded, and offers 0.5×/1×/2× speed, a scrubbable timeline, three fixed zoom levels, band toggles and a table view. |
 | 1.5.1 | 2026-10-31 | Fixed `--osm-basemap` and grid-square outlines being skipped for many GHz band labels (`1.2G`, `2.3G`, `3.4G`, `5.7G`, `134G`, `241G`, `300G`, ...). Band labels are now parsed generically, so the street underlay applies to every band at 902 MHz and up. The 2 mm band now starts at 134 GHz; added 134G/241G/300G band codes. |
