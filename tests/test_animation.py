@@ -196,7 +196,7 @@ def test_running_score_counts_each_call_once_per_band():
 
 
 def test_no_score_for_contests_without_known_rules():
-    for contest in (None, 'ARRL-VHF-SEP'):
+    for contest in (None, 'CQ-WW-VHF'):
         d = mm.build_animation_data(LOG, contest=contest)
         assert d['scoring'] is None and 'sc' not in d['events'][0]
 
@@ -209,3 +209,98 @@ def test_score_line_is_on_the_page(tmp_path, monkeypatch):
     assert 'Cumulative Score: <b id="score">0</b>' in page
     data = json.loads(re.search(r'const DATA = (.*?);\n', page).group(1))
     assert data['scoring']['total'] == data['events'][-1]['sc'] > 0
+
+
+# The analyzer's reference rover log (10ghz-log-analyzer tests/test_vhf.py
+# JUNE_ROVER): 14 QSO points x (7 band-grids + 2 grids activated) = 126.
+JUNE_ROVER = records(
+    rec('50',  '2026-06-13', '1800', 'W2FU', 'FN13', 'FN12'),
+    rec('144', '2026-06-13', '1801', 'W2FU', 'FN13', 'FN12'),
+    rec('902', '2026-06-13', '1802', 'W2FU', 'FN13', 'FN12'),
+    rec('10G', '2026-06-13', '1803', 'W2FU', 'FN13', 'FN12'),
+    rec('144', '2026-06-13', '1804', 'W2FU', 'FN13', 'FN12'),       # duplicate
+    rec('144', '2026-06-13', '1805', 'KF2MR/R', 'FN22', 'FN12'),
+    rec('144', '2026-06-13', '1900', 'KF2MR/R', 'FN02', 'FN12'),    # the other rover moved
+    rec('144', '2026-06-14', '0100', 'W2FU', 'FN13', 'FN13'),       # this rover moved
+    rec('222', '2026-06-14', '0101', 'N2ZN', 'FN13', 'FN13'),
+    rec('144', '2026-06-16', '1200', 'K2TER', 'FN13', 'FN13'),      # after the contest
+)
+
+
+def test_vhf_rover_score_matches_the_analyzer():
+    d = mm.build_animation_data(JUNE_ROVER, contest='ARRL-VHF-JUN', category='R')
+    assert d['scoring'] == {'rules': 'ARRL June VHF', 'total': 126}
+    assert d['events'][-1]['sc'] == 126
+    fixed = mm.build_animation_data(JUNE_ROVER, contest='ARRL-VHF-JUN', category='SO')
+    assert fixed['scoring']['total'] == 14 * 7
+
+
+def test_january_points_and_category_band_limits():
+    jan = records(rec('144', '2025-01-18', '1900', 'W2FU', 'FN13', 'FN12'),
+                  rec('10G', '2025-01-18', '1901', 'W2FU', 'FN13', 'FN12'),
+                  rec('1.2G', '2025-01-18', '1902', 'W2FU', 'FN13', 'FN12'))
+    d = mm.build_animation_data(jan, contest='ARRL-VHF-JAN')
+    assert d['scoring']['total'] == (1 + 8 + 4) * 3
+    so3b = mm.build_animation_data(jan, contest='ARRL-VHF-JAN', category='SO3B')
+    assert so3b['scoring']['total'] == 1 * 1
+
+
+def test_analog_only_drops_digital_modes():
+    log = records(rec('144', '2026-06-13', '1800', 'W2FU', 'FN13', 'FN12'),
+                  rec('432', '2026-06-13', '1801', 'N2ZN', 'FN13', 'FN12'))
+    log['432'][0]['mode'] = 'DG'
+    assert mm.build_animation_data(log, contest='ARRL-VHF-JUN')['scoring']['total'] == 3 * 2
+    assert mm.build_animation_data(log, contest='ARRL-VHF-JUN',
+                                   analog_only=True)['scoring']['total'] == 1
+
+
+def test_grids_activated():
+    d = mm.build_animation_data(JUNE_ROVER, contest='ARRL-VHF-JUN', category='R')
+    assert [a['grid'] for a in d['activated']] == ['FN12', 'FN13']
+    assert d['activated'][0]['bounds'] == [[42, -78], [43, -76]]
+    assert d['activated'][0]['t'] == d['events'][0]['t']
+    one_grid = records(rec('144', '2026-06-13', '1800', 'W2FU', 'FN13', 'FN12'))
+    assert mm.build_animation_data(one_grid)['activated'] == []
+
+
+def test_vhf_category_from_header():
+    assert mm.vhf_category({'HQ-CATEGORY': 'Classic Rover'}) == 'R'
+    assert mm.vhf_category({'CATEGORY-STATION': 'ROVER-LIMITED'}) == 'RL'
+    assert mm.vhf_category({'CATEGORY-BAND': '3-BAND'}) == 'SO3B'
+    assert mm.vhf_category({}, 'K2UA/R') == 'R'
+    assert mm.vhf_category({}, 'K2UA') == 'SO'
+    assert mm.vhf_analog_only({'X-ANALOG-ONLY': 'YES'})
+
+
+def test_band_labels():
+    assert [mm.band_label(b) for b in ('6m', '50', '2m', '144', '70cm', '1.2G', '23cm', '3cm',
+                                       '10G', '75G', '4mm', '123G', '142G', '40m')] == \
+        ['50 MHz', '50 MHz', '144 MHz', '144 MHz', '432 MHz', '1.2 GHz', '1.2 GHz', '10 GHz',
+         '10 GHz', '78 GHz', '78 GHz', '122 GHz', '134 GHz', '40m']
+
+
+def test_every_band_style_is_unique():
+    styles = mm._ANIMATION_BAND_STYLES
+    for i, (_, color, dash, marker) in enumerate(styles):
+        for _, other_color, other_dash, other_marker in styles[i + 1:]:
+            if color == other_color:
+                assert dash != other_dash and marker != other_marker
+
+
+def test_rover_call_is_file_safe(tmp_path, monkeypatch):
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    monkeypatch.chdir(tmp_path)
+    assert mm.create_animation_html(JUNE_ROVER, 'K2UA/R', contest='ARRL-VHF-JUN') == \
+        'K2UA-R_contest_animation.html'
+    page = (tmp_path / 'K2UA-R_contest_animation.html').read_text(encoding='utf-8')
+    assert 'id="act-line"' in page and 'ARRL June VHF 2026' in page
+
+
+def test_interactive_map_data_cannot_end_its_script_block(tmp_path):
+    out = tmp_path / 'map.html'
+    data = {'title': 'x', 'note': '</script><img src=x onerror=alert(1)> & more'}
+    mm._write_leaflet_html(data, str(out), 'K2UA')
+    page = out.read_text(encoding='utf-8')
+    assert '</script><img' not in page
+    blob = re.search(r"const DATA = (.*?);\n", page).group(1)
+    assert json.loads(blob)['note'] == data['note']

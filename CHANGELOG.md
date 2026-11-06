@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-11-06
+
+### Added
+- **VHF contest movies.** The `--animate` movie's Cumulative Score now covers the ARRL
+  January, June and September VHF Contests (`CONTEST: ARRL-VHF-JAN`, `-JUN`, `-SEP`),
+  scored exactly as 10ghz-log-analyzer's `vhf_cabrillo.py` does: QSO points by band
+  (January doubles 902 MHz and up), each station once per band per grid pair, grids
+  worked per band as multipliers, and, for a rover, one more multiplier per grid
+  activated. The entry category is read from the Cabrillo header (`HQ-CATEGORY`,
+  `CATEGORY-STATION`, `CATEGORY-BAND`, `X-ANALOG-ONLY`; a `/R` call with no station
+  category means Classic Rover), so 3-Band, FM-Only, Limited Rover and Analog Only
+  entries score their band and mode limits.
+- **Grids activated.** For a log with more than one operating grid (a rover), each
+  4-character grid is shaded on the map from the moment the station first reaches it,
+  and the info panel counts **Grids activated**.
+- Fixed styles for every band from 50 MHz up (color, dash pattern and marker shape),
+  so a ten-band rover log has no gray bands; the legend, tooltips and table use the
+  band names `50 MHz` ... `10 GHz`, `78 GHz` ... (`band_label`).
+- `read_cabrillo_headers`, `vhf_category`, `vhf_analog_only`, `file_safe_call`.
+
+### Fixed
+- A rover call sign such as `K2UA/R` made every map and the movie fail to save
+  (`No such file or directory: 'K2UA/R_...'`). File names now use `K2UA-R`.
+
 ## [1.6.2] - 2026-11-06
 
 ### Added
