@@ -307,10 +307,9 @@ def test_interactive_map_data_cannot_end_its_script_block(tmp_path):
 
 
 @pytest.fixture
-def credit():
+def credit(monkeypatch):
+    monkeypatch.setattr(mm, '_HTML_CREDIT', None)  # restored after the test, however it ends
     mm.set_html_credit('Created using example.com by N0CALL <&>')
-    yield
-    mm.set_html_credit(None)
 
 
 def test_credit_line_on_the_movie(tmp_path, monkeypatch, credit):
@@ -327,8 +326,8 @@ def test_credit_line_on_interactive_maps(tmp_path, credit):
     out = tmp_path / 'map.html'
     mm._write_leaflet_html({'title': 'x'}, str(out), 'K2UA')
     page = out.read_text(encoding='utf-8')
-    assert json.loads(re.search(r"const DATA = (.*?);\n", page).group(1))['credit'].startswith(
-        'Created using example.com by N0CALL')
+    assert json.loads(re.search(r"const DATA = (.*?);\n", page).group(1))['credit'] == (
+        'Created using example.com by N0CALL &lt;&amp;&gt;')
     assert 'if (DATA.credit) map.attributionControl.addAttribution(DATA.credit);' in page
 
 
