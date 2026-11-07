@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-11-07
+
+### Added
+- `--credit TEXT`: a credit line (for example "Created using example.com by N0CALL")
+  added to the map attribution corner of every `--html` map and of the `--animate`
+  movie, after "Leaflet | Natural Earth". Programs that import this module can set it
+  with `set_html_credit()`. Without it, nothing changes.
+
 ## [1.7.0] - 2026-11-06
 
 ### Added
