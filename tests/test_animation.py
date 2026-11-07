@@ -304,3 +304,37 @@ def test_interactive_map_data_cannot_end_its_script_block(tmp_path):
     assert '</script><img' not in page
     blob = re.search(r"const DATA = (.*?);\n", page).group(1)
     assert json.loads(blob)['note'] == data['note']
+
+
+@pytest.fixture
+def credit():
+    mm.set_html_credit('Created using example.com by N0CALL <&>')
+    yield
+    mm.set_html_credit(None)
+
+
+def test_credit_line_on_the_movie(tmp_path, monkeypatch, credit):
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    out = tmp_path / 'movie.html'
+    mm.create_animation_html(LOG, 'K2UA', output_file=str(out), contest='ARRL-10-GHZ')
+    page = out.read_text(encoding='utf-8')
+    blob = json.loads(re.search(r"const DATA = (.*?);\n", page).group(1))
+    assert blob['credit'] == 'Created using example.com by N0CALL &lt;&amp;&gt;'
+    assert 'if (D.credit) map.attributionControl.addAttribution(D.credit);' in page
+
+
+def test_credit_line_on_interactive_maps(tmp_path, credit):
+    out = tmp_path / 'map.html'
+    mm._write_leaflet_html({'title': 'x'}, str(out), 'K2UA')
+    page = out.read_text(encoding='utf-8')
+    assert json.loads(re.search(r"const DATA = (.*?);\n", page).group(1))['credit'].startswith(
+        'Created using example.com by N0CALL')
+    assert 'if (DATA.credit) map.attributionControl.addAttribution(DATA.credit);' in page
+
+
+def test_no_credit_by_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(mm, '_animation_background', lambda *a, **k: {})
+    out = tmp_path / 'movie.html'
+    mm.create_animation_html(LOG, 'K2UA', output_file=str(out))
+    blob = json.loads(re.search(r"const DATA = (.*?);\n", out.read_text(encoding='utf-8')).group(1))
+    assert blob['credit'] is None

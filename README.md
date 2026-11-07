@@ -294,6 +294,7 @@ The script automatically detects common CSV column names:
 | `--animate` | Also generate the animated contest movie (see [Contest Movie](#contest-movie---animate)) |
 | `--animate-only` | Generate only the contest movie, without the per-band maps |
 | `--animate-seconds SECONDS` | Length of the movie at 1× (default: about 2 minutes for a busy multi-location log, less for a small one) |
+| `--credit TEXT` | A credit line for the map attribution corner of the `--html` maps and the movie, e.g. `--credit "Created using example.com by N0CALL"` |
 
 ## Output Files
 
@@ -428,6 +429,7 @@ watch your contest unfold location by location, band by band.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.7.1 | 2026-11-07 | `--credit TEXT` adds a credit line to the attribution corner of the `--html` maps and the `--animate` movie. |
 | 1.7.0 | 2026-11-06 | The `--animate` movie scores the ARRL January, June and September VHF Contests, rovers included, and shades each grid a rover activates; every band from 50 MHz up has a fixed style; rover call signs (`K2UA/R`) no longer break output file names. |
 | 1.6.2 | 2026-11-06 | The `--animate` movie shows a running **Cumulative Score** for ARRL 10 GHz and Up logs, computed exactly as 10ghz-log-analyzer scores them, so it ends on the same total as that tool's summary. |
 | 1.6.1 | 2026-11-05 | The `--animate` movie bundles Leaflet 1.9.4 (`vendor/leaflet/`), so a saved copy plays with no CDN, even offline. Saved `--html` maps and movies no longer show OpenStreetMap's "Access blocked" tiles: when opened from a file (which sends no `Referer`, so OpenStreetMap refuses the tiles) they leave the street underlay out and say so. |
