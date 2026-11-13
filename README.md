@@ -89,6 +89,14 @@ python maidenhead_map.py your_log.csv --paths --home-grid EM00uf
 Path maps are saved alongside the regular contact-density maps, named
 `{callsign}_{band}_{home_grid}_{region}_grid_paths_map.png`.
 
+Stations worked at the same spot (the same grid, so the same marker) share one marker,
+one line and one label that lists every call, one per line, then the distance: for
+example `VE2ZAZ / VE3FN / 49.9 km`. A spot with more than six calls lists six and then
+`+N more` (the `--html` map's popup for that spot still lists them all). Where nearby
+stations' labels would overlap, a label slides just above or below the others; on the
+PNG a thin leader line joins a moved label to its marker, and the `--html` map re-checks
+after every zoom.
+
 ### Multi-Location (Rover) Logs
 
 If a log reports a different home grid on different QSOs — typical for a rover
@@ -235,8 +243,12 @@ python maidenhead_map.py your_10g_log.cbr --animate-only
   grid activated for a rover. The category comes from the Cabrillo header (or a `/R`
   call sign means Classic Rover). Other contests don't show a score.
 - **Controls.** Play/pause (or the space bar), restart, 0.5×/1×/2× speed, a timeline
-  you can drag, and three fixed zoom levels (Region, Area, Local). Wheel, pinch and
-  double-click zooming are off, so the camera stays steady. **Table** lists every
+  you can drag, and **+** / **−** zoom buttons (or the + and − keys), from the whole
+  region in to two levels closer than the old Local view. It opens zoomed so typical
+  contacts fit around the station.
+  Wheel, pinch and double-click zooming are off, so the camera stays steady. A call that
+  flashes up next to one still on screen (two stations in one grid, worked back to back)
+  stacks above it instead of printing over it. **Table** lists every
   operating location with its UTC times and contacts per band.
 - **Length.** About two minutes at 1× for a busy multi-location log, less for a small
   one; set it with `--animate-seconds 90`.
@@ -429,6 +441,7 @@ watch your contest unfold location by location, band by band.
 
 | Version | Date | Summary |
 | --- | --- | --- |
+| 1.8.0 | 2026-11-13 | Path maps: stations worked at the same spot share one marker and one label listing every call, and nearby labels no longer overlap (PNG and `--html`). The `--animate` movie has **+** / **−** zoom instead of Region/Area/Local, and calls flashing up at the same spot stack instead of printing over each other. |
 | 1.7.1 | 2026-11-07 | `--credit TEXT` adds a credit line to the attribution corner of the `--html` maps and the `--animate` movie. |
 | 1.7.0 | 2026-11-06 | The `--animate` movie scores the ARRL January, June and September VHF Contests, rovers included, and shades each grid a rover activates; every band from 50 MHz up has a fixed style; rover call signs (`K2UA/R`) no longer break output file names. |
 | 1.6.2 | 2026-11-06 | The `--animate` movie shows a running **Cumulative Score** for ARRL 10 GHz and Up logs, computed exactly as 10ghz-log-analyzer scores them, so it ends on the same total as that tool's summary. |
