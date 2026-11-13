@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-11-13
+
+### Fixed
+- **Overlapping call labels on path maps.** Two stations worked at the same spot (the
+  same grid, so the same marker) each got a label, printed exactly on top of each other:
+  VE3FN over VE2ZAZ read as a station that wasn't in the log. Each spot now gets one
+  marker, one line and one label listing every call, then the distance. More than six
+  calls show six and `+N more`; the `--html` popup for the spot lists all its contacts.
+- **Nearby labels no longer overlap.** On the PNG path map, a label that another would
+  cover moves the shortest distance up or down to a free spot, with a thin leader line
+  back to its marker. The `--html` path map does the same in the browser on load and
+  after every zoom.
+- **Contest movie:** a call that flashes up where another is still showing stacks above
+  it (up to six rows) instead of printing over it.
+- The `--html` path map's station and home labels are HTML-escaped.
+
+### Changed
+- **Contest movie zoom:** the Region / Area / Local buttons are replaced by **+** and
+  **−** (also the + / = and − keys), one level at a time from the region view in to two
+  levels past the old Local, disabled at either end. The movie still opens at the old
+  Area level.
+
 ## [1.7.1] - 2026-11-07
 
 ### Added
